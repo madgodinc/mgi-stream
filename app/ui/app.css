@@ -180,7 +180,10 @@ button:disabled:hover { border-color: var(--faint); color: var(--ink); }
   padding: 7px 4px;
   letter-spacing: .08em;
 }
-.segments button:last-child { grid-column: span 2; }
+#audience button:last-child { grid-column: span 2; }
+
+/* Four voice presets read better as a 2x2 block than as 3 + 1. */
+#presets { grid-template-columns: repeat(2, 1fr); margin-bottom: 18px; }
 .segments button.sel { border-color: var(--hot); color: #14100a; background: var(--hot); }
 
 /* The prefix box sits on the same line as the switch that turns it on. */

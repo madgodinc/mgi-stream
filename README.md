@@ -17,7 +17,7 @@ The build is not code-signed, so SmartScreen shows a warning the first time: **M
 ## Use it
 
 1. Type the channel name, for example `@yourname`. This is the account whose live chat gets read.
-2. Pick a voice, set speed and pitch, hit **test voice**.
+2. Pick a voice, set speed and pitch, hit **test voice**. Four presets cover the common cases (Russian and English, male and female); the dropdown below them holds every voice Edge offers.
 3. Press **go on air**.
 4. In OBS add **Source → Browser**, paste the URL from the bottom bar (`http://localhost:8099`), size it 900x600.
 

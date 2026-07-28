@@ -211,9 +211,25 @@ for (const b of $("audience").children) {
   };
 }
 
+function markPreset() {
+  for (const b of $("presets").children) b.classList.toggle("sel", b.dataset.voice === cfg.voice);
+}
+
+for (const b of $("presets").children) {
+  b.onclick = () => {
+    $("voice").value = b.dataset.voice;
+    cfg.voice = b.dataset.voice;
+    markPreset();
+    touched();
+  };
+}
+
 const TEXT_FIELDS = ["channel", "prefix", "port", "nicknameTemplate", "allowUsers", "ignoreUsers"];
 for (const id of TEXT_FIELDS) $(id).oninput = touched;
-$("voice").onchange = touched;
+$("voice").onchange = () => {
+  touched();
+  markPreset();
+};
 
 window.mgi.on("status", (s) => {
   showStatus(s);
@@ -255,6 +271,7 @@ window.mgi.on("speak", (item) => {
     .map((v) => `<option value="${v.id}">${v.locale} · ${v.id.replace(/^[a-z]{2}-[A-Z]{2}-/, "")} · ${v.gender}</option>`)
     .join("");
   select.value = cfg.voice;
+  markPreset();
 
   if (location.search.includes("demo")) go(true);
 })();
