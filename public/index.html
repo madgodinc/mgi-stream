@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mgi-stream</title>
+<style>
+  :root {
+    --ink: #f4efe6;
+    --dim: #8b8478;
+    --hot: #e8a33d;
+    --bg: #0b0a09;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Bahnschrift, "Arial Narrow", sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 28px 32px 0;
+  }
+
+  #flow { flex: 1; display: flex; flex-direction: column; gap: 18px; overflow: hidden; }
+
+  .line {
+    display: grid;
+    grid-template-columns: 3px 1fr;
+    gap: 16px;
+    align-items: stretch;
+    opacity: .38;
+    transition: opacity .4s ease;
+  }
+  .line .bar { background: #262320; min-height: 34px; }
+  .line .who {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 12px;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 3px;
+  }
+  .line .what { font-size: 26px; line-height: 1.18; font-weight: 300; }
+
+  /* The bar fills top to bottom as the phrase plays: progress without a widget. */
+  .line.live { opacity: 1; }
+  .line.live .who { color: var(--hot); }
+  .line.live .bar {
+    background: linear-gradient(var(--hot), var(--hot)) top / 100% var(--fill, 0%) no-repeat, #3a3229;
+  }
+
+  footer {
+    flex: none;
+    display: flex;
+    gap: 26px;
+    align-items: baseline;
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 12px;
+    letter-spacing: .07em;
+    color: var(--dim);
+    padding: 16px 0 18px;
+    border-top: 1px solid #1a1815;
+  }
+  footer b { color: var(--ink); font-weight: 400; }
+  #dot { color: #6f6a60; }
+  #dot.on { color: #7fbf5f; }
+
+  #unlock {
+    position: fixed; inset: 0;
+    background: rgba(11, 10, 9, .94);
+    display: none; place-items: center;
+    font-size: 22px; letter-spacing: .04em; cursor: pointer;
+  }
+  #unlock.show { display: grid; }
+</style>
+</head>
+<body>
+
+<div id="flow"></div>
+
+<footer>
+  <span id="dot">●</span>
+  <span>channel <b id="who">—</b></span>
+  <span>voice <b id="voice">—</b></span>
+  <span>queue <b id="q">0</b></span>
+  <span id="note"></span>
+</footer>
+
+<div id="unlock">click to enable sound</div>
+
+<script>
+const flow = document.getElementById("flow");
+const audio = new Audio();
+const pending = [];
+let playing = false;
+
+function row(nick, text) {
+  const el = document.createElement("div");
+  el.className = "line live";
+  el.innerHTML = '<div class="bar"></div><div><div class="who"></div><div class="what"></div></div>';
+  el.querySelector(".who").textContent = nick;
+  el.querySelector(".what").textContent = text;
+  flow.prepend(el);
+  while (flow.children.length > 7) flow.lastElementChild.remove();
+  return el;
+}
+
+function play(item) {
+  playing = true;
+  const el = row(item.nick, item.text);
+  audio.src = "data:audio/mpeg;base64," + item.audio;
+
+  audio.ontimeupdate = () => {
+    if (audio.duration) el.style.setProperty("--fill", (audio.currentTime / audio.duration) * 100 + "%");
+  };
+  audio.onended = () => {
+    el.classList.remove("live");
+    el.style.setProperty("--fill", "100%");
+    playing = false;
+    next();
+  };
+  audio.onerror = audio.onended;
+
+  // OBS allows autoplay; a plain browser tab needs one user gesture first.
+  audio.play().catch(() => {
+    document.getElementById("unlock").classList.add("show");
+    playing = false;
+  });
+}
+
+function next() {
+  if (playing || !pending.length) return;
+  play(pending.shift());
+}
+
+document.getElementById("unlock").onclick = () => {
+  document.getElementById("unlock").classList.remove("show");
+  audio.play().catch(() => {});
+  playing = true;
+};
+
+const ws = new WebSocket("ws://" + location.host);
+const dot = document.getElementById("dot");
+ws.onopen = () => dot.classList.add("on");
+ws.onclose = () => { dot.classList.remove("on"); setTimeout(() => location.reload(), 3000); };
+
+ws.onmessage = (e) => {
+  const m = JSON.parse(e.data);
+  if (m.kind === "hello") {
+    document.getElementById("who").textContent = m.mock ? "mock" : m.username;
+    document.getElementById("voice").textContent = m.voice;
+  }
+  if (m.kind === "queued") document.getElementById("q").textContent = m.size;
+  if (m.kind === "speak") {
+    document.getElementById("q").textContent = m.size;
+    pending.push(m);
+    next();
+  }
+  if (m.kind === "dropped") document.getElementById("note").textContent = "dropped under load: " + m.total;
+  if (m.kind === "error") document.getElementById("note").textContent = m.text;
+};
+</script>
+</body>
+</html>

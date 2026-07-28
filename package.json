@@ -1,0 +1,25 @@
+{
+  "name": "mgi-stream",
+  "version": "0.1.0",
+  "description": "Reads TikTok LIVE chat out loud into OBS. Self-hosted, no API key.",
+  "scripts": {
+    "start": "node server.js",
+    "mock": "node server.js --mock",
+    "voices": "node voices.js"
+  },
+  "keywords": [
+    "tiktok",
+    "tts",
+    "obs",
+    "livestream",
+    "text-to-speech"
+  ],
+  "author": "Mad God Inc",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "msedge-tts": "^2.0.7",
+    "tiktok-live-connector": "^2.4.3",
+    "ws": "^8.21.1"
+  }
+}
