@@ -10,6 +10,20 @@ import { decide } from "./filter.js";
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript" };
 const RETRY_MS = 15000;
 
+/** The connector throws plain Errors but emits bare objects, so String() alone gives "[object Object]". */
+function describe(err) {
+  const text = err?.message ?? err?.error?.message ?? err?.exception?.message ?? String(err ?? "");
+  if (text !== "[object Object]") return text;
+  try {
+    return JSON.stringify(err).slice(0, 160);
+  } catch {
+    return "unknown error";
+  }
+}
+
+/** "The requested user isn't online :(" — the room simply has not started yet. */
+const OFFLINE = /offline|isn'?t\s+online|not\s+online|not\s+live|has\s+ended/i;
+
 /**
  * Owns everything that runs while the app is "on air": the chat connection, the
  * speech queue, and the local HTTP/WebSocket server that feeds the OBS overlay.
@@ -31,6 +45,7 @@ export class StreamServer extends EventEmitter {
     this.dropped = 0;
     this.running = false;
     this.retryTimer = null;
+    this.connecting = false;
   }
 
   get overlayUrl() {
@@ -133,22 +148,31 @@ export class StreamServer extends EventEmitter {
     });
     this.conn.on(WebcastEvent.STREAM_END, () => this.#retry(cfg, { code: "ended" }));
     this.conn.on(ControlEvent.DISCONNECTED, () => this.#retry(cfg, { code: "dropped" }));
-    this.conn.on("error", (err) =>
-      this.emit("status", { state: "error", soft: true, detail: err?.message || String(err) }),
-    );
+    // A failed handshake reports itself twice, as an event and as a rejection.
+    // The rejection carries the better message, so the event stays quiet until
+    // the connection is up and its errors are news.
+    this.conn.on("error", (err) => {
+      if (!this.connecting && !this.retryTimer) {
+        this.emit("status", { state: "error", soft: true, detail: describe(err) });
+      }
+    });
 
     try {
+      this.connecting = true;
       const state = await this.conn.connect();
       this.emit("status", { state: "live", detail: `room ${state.roomId}` });
     } catch (err) {
       // A wrong channel name never starts working on its own; everything else
       // does, so it goes back in the queue instead of stopping the run.
       if (err?.name === "InvalidUniqueIdError") {
-        this.emit("status", { state: "error", code: "badChannel", arg: cfg.username, detail: err.message });
+        this.emit("status", { state: "error", code: "badChannel", arg: cfg.username, detail: describe(err) });
         throw err;
       }
-      const offline = err?.name === "UserOfflineError" || /offline|not.*live/i.test(err.message ?? "");
-      this.#retry(cfg, offline ? { code: "waitLive" } : { code: "retrying", arg: err.message });
+      const reason = describe(err);
+      const offline = err?.name === "UserOfflineError" || OFFLINE.test(reason);
+      this.#retry(cfg, offline ? { code: "waitLive" } : { code: "retrying", arg: reason });
+    } finally {
+      this.connecting = false;
     }
   }
 
