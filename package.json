@@ -1,6 +1,6 @@
 {
   "name": "mgi-stream",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reads TikTok LIVE chat out loud into OBS. Self-hosted, no API key.",
   "scripts": {
     "start": "electron .",

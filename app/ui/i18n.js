@@ -45,6 +45,8 @@ const RU = {
   cutAfter: "Обрезать сообщения после",
   queueDepth: "Глубина очереди",
   port: "Порт оверлея",
+  signKey: "Ключ EulerStream",
+  signKeyNote: "Нужен, только если TikTok перестал пускать со словами про лимит подписи. Бесплатный ключ берётся на eulerstream.com, обычно он не требуется.",
 
   obsSource: "источник для OBS",
   notRunning: "не запущено",
@@ -127,6 +129,8 @@ const EN = {
   cutAfter: "Cut messages after",
   queueDepth: "Queue depth",
   port: "Overlay port",
+  signKey: "EulerStream key",
+  signKeyNote: "Only needed once TikTok starts refusing with a signature rate limit. A free key comes from eulerstream.com; most of the time there is no need for one.",
 
   obsSource: "OBS browser source",
   notRunning: "not running",

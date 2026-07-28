@@ -21,6 +21,7 @@ function paint() {
   $("prefix").value = cfg.prefix;
   $("port").value = cfg.port;
   $("nicknameTemplate").value = cfg.nicknameTemplate;
+  $("signApiKey").value = cfg.signApiKey;
   $("allowUsers").value = cfg.allowUsers.join("\n");
   $("ignoreUsers").value = cfg.ignoreUsers.join("\n");
 
@@ -42,6 +43,7 @@ function collect() {
   cfg.prefix = $("prefix").value || "!";
   cfg.port = Number($("port").value) || 8099;
   cfg.nicknameTemplate = $("nicknameTemplate").value || "{nick}";
+  cfg.signApiKey = $("signApiKey").value.trim();
   cfg.allowUsers = lines($("allowUsers"));
   cfg.ignoreUsers = lines($("ignoreUsers"));
   for (const key of Object.keys(SLIDERS)) cfg[key] = Number($(key).value);
@@ -227,7 +229,7 @@ for (const b of $("presets").children) {
   };
 }
 
-const TEXT_FIELDS = ["channel", "prefix", "port", "nicknameTemplate", "allowUsers", "ignoreUsers"];
+const TEXT_FIELDS = ["channel", "prefix", "port", "nicknameTemplate", "allowUsers", "ignoreUsers", "signApiKey"];
 for (const id of TEXT_FIELDS) $(id).oninput = touched;
 $("voice").onchange = () => {
   touched();
@@ -242,7 +244,12 @@ window.mgi.on("status", (s) => {
 
 window.mgi.on("message", ({ nick, text, spoken, reason, arg }) => {
   const el = addLine(nick, text, spoken ? "" : reason, arg);
-  if (spoken) waiting.set(nick + " " + text, el);
+  if (!spoken) return;
+  waiting.set(nick + " " + text, el);
+  // A row is claimed when its audio arrives. A phrase that never synthesizes
+  // leaves its row unclaimed, so the oldest go overboard instead of piling up
+  // for the length of the stream.
+  if (waiting.size > 60) waiting.delete(waiting.keys().next().value);
 });
 
 window.mgi.on("queue", ({ size, dropped }) => {

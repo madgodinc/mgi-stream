@@ -86,11 +86,30 @@ export class StreamServer extends EventEmitter {
     }
     this.conn = null;
 
+    // An OBS browser source holds its WebSocket open, and closing the ws server
+    // does not close the sockets it accepted. Without this, http.close() waits
+    // for a connection that never ends and "stop" hangs, taking window close
+    // with it.
+    for (const client of this.wss?.clients ?? []) client.terminate();
     await new Promise((done) => (this.wss ? this.wss.close(done) : done()));
+    this.http?.closeAllConnections?.();
     await new Promise((done) => (this.http ? this.http.close(done) : done()));
     this.wss = null;
     this.http = null;
     this.emit("status", { state: "off", detail: "" });
+  }
+
+  /**
+   * Applies edited settings to a session that is already running: who gets read,
+   * what counts as noise, which voice says it. Channel and port are the two that
+   * still need a restart, so they keep their current values.
+   */
+  update(cfg) {
+    if (!this.running || !this.cfg) return;
+    const revoiced =
+      cfg.voice !== this.cfg.voice || cfg.rate !== this.cfg.rate || cfg.pitch !== this.cfg.pitch;
+    this.cfg = { ...cfg, username: this.cfg.username, port: this.cfg.port };
+    if (revoiced) this.speaker = new Speaker(this.cfg);
   }
 
   // ── local server for the OBS overlay ────────────────────────────────────────
@@ -122,7 +141,9 @@ export class StreamServer extends EventEmitter {
         });
         reject(err);
       });
-      this.http.listen(port, () => resolve());
+      // Loopback only. The overlay is for OBS on this machine, and the readme
+      // promises the page is not reachable from the rest of the network.
+      this.http.listen(port, "127.0.0.1", () => resolve());
     });
   }
 
@@ -248,7 +269,9 @@ export class StreamServer extends EventEmitter {
       if (this.running) {
         const payload = { kind: "speak", nick: item.nick, text: item.text, audio: mp3.toString("base64") };
         this.#broadcast(payload);
-        this.emit("speak", payload);
+        // The app window needs the event to mark the row, but the audio with it
+        // only when it is the one doing the talking.
+        this.emit("speak", this.cfg.playInApp ? payload : { ...payload, audio: "" });
       }
     } catch (err) {
       this.emit("status", { state: "error", code: "speech", arg: err.message, detail: err.message });

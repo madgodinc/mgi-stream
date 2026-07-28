@@ -23,7 +23,9 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: true
   shortcutName: mgi-stream
-  artifactName: mgi-stream-${version}-setup.${ext}
+  # No version in the file name: the download links on the site and in the readme
+  # point at releases/latest/download/<name>, which only resolves for a fixed name.
+  artifactName: mgi-stream-setup.${ext}
 
 portable:
-  artifactName: mgi-stream-${version}-portable.${ext}
+  artifactName: mgi-stream-portable.${ext}

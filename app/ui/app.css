@@ -71,6 +71,8 @@ body {
 
 .field { display: flex; flex-direction: column; gap: 5px; }
 .field > label { color: var(--dim); }
+/* For the one setting that needs a sentence of explanation under it. */
+.field > .hint { color: var(--dim); font-size: 12px; line-height: 1.45; }
 
 input[type="text"], select, textarea {
   background: transparent;

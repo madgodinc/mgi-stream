@@ -64,7 +64,12 @@ app.on("activate", () => {
 // ── bridge ────────────────────────────────────────────────────────────────────
 
 ipcMain.handle("config:get", () => config.load(configDir));
-ipcMain.handle("config:save", (_e, cfg) => config.save(configDir, cfg));
+ipcMain.handle("config:save", (_e, cfg) => {
+  const saved = config.save(configDir, cfg);
+  // Settings are edited mid-stream, so a running session takes them as they land.
+  server.update(saved);
+  return saved;
+});
 
 ipcMain.handle("voices:list", async () => {
   try {

@@ -10,9 +10,9 @@ TikFinity does this as a hosted service you do not control. mgi-stream does the 
 
 ## Install
 
-**[Download the installer](https://github.com/madgodinc/mgi-stream/releases/latest/download/mgi-stream-0.1.0-setup.exe)** and run it. That is the entire installation.
+**[Download the installer](https://github.com/madgodinc/mgi-stream/releases/latest/download/mgi-stream-setup.exe)** and run it. That is the entire installation.
 
-Nothing else has to be on the machine. The app ships with its own runtime, all seventy of its packages included, so a PC that has never had Node or npm on it runs this fine. There is also a [portable build](https://github.com/madgodinc/mgi-stream/releases/latest/download/mgi-stream-0.1.0-portable.exe) that skips the installer too, and [older versions](../../releases) if you need one.
+Nothing else has to be on the machine. The app ships with its own runtime, all seventy of its packages included, so a PC that has never had Node or npm on it runs this fine. There is also a [portable build](https://github.com/madgodinc/mgi-stream/releases/latest/download/mgi-stream-portable.exe) that skips the installer too, and [older versions](../../releases) if you need one.
 
 The build is not code-signed, so SmartScreen shows a warning the first time: **More info → Run anyway**.
 
@@ -53,6 +53,8 @@ Chat moves faster than anyone can talk, so the useful part of this app is what i
 
 Every filtered message still shows up in the app, greyed out with the reason next to the nickname, so nothing disappears silently.
 
+All of this can be changed mid-stream. Tightening the audience or switching the voice takes effect on the next message, without going off air. The channel name and the overlay port are the two that still need a restart.
+
 ## Why the queue has a limit
 
 Chat produces messages faster than speech plays them back. An unbounded queue puts the voice minutes behind the picture, and it never catches up. The queue caps at a depth you choose and drops the oldest pending message when it overflows, which keeps the audio close to what is happening on screen. The footer shows the current depth and how many were dropped.
@@ -71,6 +73,8 @@ Synthesis holds its socket open, so a phrase takes roughly 300 to 600 ms after t
 ## Limits
 
 TikTok has no official realtime chat API. This uses [`tiktok-live-connector`](https://github.com/zerodytrash/TikTok-Live-Connector), which speaks the internal Webcast protocol, so a TikTok-side change can break the connection until that library catches up.
+
+Joining a room is signed through EulerStream, whose free tier is rate limited per address. If connecting starts failing with a signature limit, put a free key in the **EulerStream key** field in settings. Most people never need to.
 
 Speech comes from the public endpoint behind Edge Read Aloud. It costs nothing and needs no key, but it is an internet round trip per phrase and Microsoft can change it. Russian ships two voices, `ru-RU-DmitryNeural` and `ru-RU-SvetlanaNeural`; other languages have more. Moving to a local engine such as Piper or Silero means replacing `app/core/tts.js` alone, since the rest of the app only handles mp3 buffers.
 
