@@ -10,9 +10,13 @@ TikFinity does this as a hosted service you do not control. mgi-stream does the 
 
 ## Install
 
-Grab `mgi-stream-<version>-setup.exe` from [Releases](../../releases) and run it. The portable build needs no installation at all.
+**[Download the installer](https://github.com/madgodinc/mgi-stream/releases/latest/download/mgi-stream-0.1.0-setup.exe)** and run it. That is the entire installation.
+
+Nothing else has to be on the machine. The app ships with its own runtime, all seventy of its packages included, so a PC that has never had Node or npm on it runs this fine. There is also a [portable build](https://github.com/madgodinc/mgi-stream/releases/latest/download/mgi-stream-0.1.0-portable.exe) that skips the installer too, and [older versions](../../releases) if you need one.
 
 The build is not code-signed, so SmartScreen shows a warning the first time: **More info → Run anyway**.
+
+Cloning this repository is for changing the app, not for running it. That path does need Node, and it is described at the bottom.
 
 ## Use it
 
@@ -74,12 +78,17 @@ Chat only. Gifts, follows, likes, alerts, and overlays are out of scope.
 
 ## Build from source
 
+Only for working on the app. To simply use it, take the installer above instead.
+
 ```bash
-npm install
+npm install        # needs Node 22
 npm start          # run the app
 npm test           # filter rules
 npm run dist       # dist/*.exe, installer and portable
 ```
+
+`npm run dist` bundles Node, Chromium and every dependency into the two `.exe`
+files, which is why the finished app needs nothing installed alongside it.
 
 Settings live in `%APPDATA%/mgi-stream/config.json`.
 
