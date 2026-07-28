@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "description": "Reads TikTok LIVE chat out loud into OBS. Self-hosted, no API key.",
   "scripts": {
-    "start": "node server.js",
-    "mock": "node server.js --mock",
-    "voices": "node voices.js"
+    "start": "electron .",
+    "icon": "node tools/make-icon.mjs",
+    "dist": "electron-builder --win",
+    "test": "node --test test/*.test.mjs"
   },
   "keywords": [
     "tiktok",
@@ -21,5 +22,10 @@
     "msedge-tts": "^2.0.7",
     "tiktok-live-connector": "^2.4.3",
     "ws": "^8.21.1"
-  }
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "main": "app/main.js"
 }

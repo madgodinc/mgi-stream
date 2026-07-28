@@ -1,0 +1,29 @@
+appId: inc.madgod.mgistream
+productName: mgi-stream
+copyright: Copyright (c) 2026 Mad God Inc
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - app/**/*
+  - "!**/*.map"
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: mgi-stream
+  artifactName: mgi-stream-${version}-setup.${ext}
+
+portable:
+  artifactName: mgi-stream-${version}-portable.${ext}

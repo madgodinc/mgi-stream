@@ -8,7 +8,11 @@ import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 export class Speaker {
   constructor({ voice, rate, pitch }) {
     this.voice = voice;
-    this.prosody = { rate, pitch };
+    // The API wants signed SSML units, the UI stores plain numbers.
+    this.prosody = {
+      rate: `${rate >= 0 ? "+" : ""}${rate}%`,
+      pitch: `${pitch >= 0 ? "+" : ""}${pitch}Hz`,
+    };
     this.tts = null;
   }
 
@@ -40,7 +44,13 @@ export class Speaker {
   }
 }
 
-export async function listVoices(localePrefix = "") {
+let voiceCache = null;
+
+export async function listVoices() {
+  if (voiceCache) return voiceCache;
   const voices = await new MsEdgeTTS().getVoices();
-  return voices.filter((v) => v.Locale.startsWith(localePrefix));
+  voiceCache = voices
+    .map((v) => ({ id: v.ShortName, locale: v.Locale, gender: v.Gender, name: v.FriendlyName }))
+    .sort((a, b) => a.locale.localeCompare(b.locale) || a.id.localeCompare(b.id));
+  return voiceCache;
 }
