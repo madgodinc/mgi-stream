@@ -106,6 +106,8 @@ textarea {
 #status i { width: 7px; height: 7px; background: var(--faint); font-style: normal; }
 #status.live i { background: var(--live); box-shadow: 0 0 10px var(--live); }
 #status.connecting i { background: var(--hot); animation: blink .7s steps(2) infinite; }
+/* Waiting is the same amber, breathing slower: nothing is wrong, nothing is live. */
+#status.waiting i { background: var(--hot); animation: blink 2s steps(2) infinite; }
 #status.error i { background: var(--bad); }
 @keyframes blink { 50% { opacity: .2; } }
 

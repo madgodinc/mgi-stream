@@ -24,9 +24,21 @@ export const DEFAULTS = {
   requirePrefix: false,
   prefix: "!",
 
-  playInApp: false,
+  // On by default: a first run with no OBS set up should still make a sound,
+  // otherwise the app looks broken.
+  playInApp: true,
   signApiKey: "",
 };
+
+/**
+ * The connector wants a bare uniqueId, but people paste what they have: `@ник`,
+ * a profile link, the /live URL, a trailing space from the phone keyboard.
+ */
+export function normalizeUsername(raw) {
+  const input = String(raw ?? "").trim();
+  const fromLink = input.match(/tiktok\.com\/@([^/?#\s]+)/i);
+  return (fromLink ? fromLink[1] : input.replace(/^@+/, "")).split(/[/?#\s]/)[0];
+}
 
 export function load(dir) {
   const file = path.join(dir, "config.json");
@@ -43,6 +55,7 @@ export function save(dir, cfg) {
   fs.mkdirSync(dir, { recursive: true });
   const clean = {};
   for (const key of Object.keys(DEFAULTS)) clean[key] = cfg?.[key] ?? DEFAULTS[key];
+  clean.username = normalizeUsername(clean.username);
   fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify(clean, null, 2));
   return clean;
 }

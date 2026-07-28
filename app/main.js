@@ -88,7 +88,7 @@ ipcMain.handle("run:start", async (_e, { cfg, mock }) => {
   if (!mock && !saved.username.trim()) return { ok: false, code: "noUsername" };
   try {
     await server.start(saved, { mock });
-    return { ok: true, url: server.overlayUrl };
+    return { ok: true, url: server.overlayUrl, username: saved.username };
   } catch (err) {
     await server.stop();
     // The status event already carried a translatable code for this failure.

@@ -16,20 +16,24 @@ The build is not code-signed, so SmartScreen shows a warning the first time: **M
 
 ## Use it
 
-1. Type the channel name, for example `@yourname`. This is the account whose live chat gets read.
+1. Type the channel name. `@yourname`, `yourname`, or a pasted `tiktok.com/@yourname/live` link all work. This is the account whose live chat gets read.
 2. Pick a voice, set speed and pitch, hit **test voice**. Four presets cover the common cases (Russian and English, male and female); the dropdown below them holds every voice Edge offers.
-3. Press **go on air**.
-4. In OBS add **Source → Browser**, paste the URL from the bottom bar (`http://localhost:8099`), size it 900x600.
+3. Press **go on air**. Speech comes out of the app window right away, so you can hear it working before OBS is involved.
+4. For the stream itself, in OBS add **Source → Browser**, paste the URL from the bottom bar (`http://localhost:8099`), size it 900x600.
 
-Speech now arrives on its own OBS audio track with its own volume slider. Nothing else on your desktop goes into it.
+Speech then arrives on its own OBS audio track with its own volume slider. Nothing else on your desktop goes into it. If you only want it in the stream and not in your own ears, turn off **play sound in this window too**.
 
 **Demo chat** replays sample messages so you can set the voice up before you ever go live.
+
+### Press it before you go live
+
+The room does not have to exist yet. If the channel is not streaming, the app sits in **waiting** and connects by itself the moment the stream starts. The same applies while it is running: a dropped socket or an ended room puts it back into waiting rather than stopping it, which matters because TikTok drops mobile streams often. Only a channel name that does not exist stops the run outright.
 
 ### No TikTok login
 
 You never sign in. The app joins the public chat of a live room the same way a viewer's browser does, so all it needs is the channel name. Nothing is posted, nothing is read from your account, and no password or session cookie is stored anywhere.
 
-Two things follow from that. The stream has to be live at the moment you press **go on air**, and you can point the app at somebody else's stream just as easily as your own.
+One thing follows from that: you can point the app at somebody else's stream just as easily as your own.
 
 ## What gets read
 

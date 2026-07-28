@@ -142,7 +142,8 @@ function showStatus(s) {
   lastStatus = s;
   $("status").className = "mono " + s.state;
   $("statusText").textContent = tr("air." + s.state);
-  $("note").textContent = s.state === "error" ? (s.code ? tr("err." + s.code, s.arg) : s.detail ?? "") : "";
+  const explains = s.state === "error" || s.state === "waiting";
+  $("note").textContent = explains ? (s.code ? tr("err." + s.code, s.arg) : s.detail ?? "") : "";
 }
 
 function setAir(on) {
@@ -167,6 +168,8 @@ async function go(mock) {
     return;
   }
   setAir(true);
+  // The channel is cleaned up on save, so show back what actually got connected.
+  if (res.username) $("channel").value = cfg.username = res.username;
   $("url").textContent = res.url;
 }
 
@@ -233,7 +236,8 @@ $("voice").onchange = () => {
 
 window.mgi.on("status", (s) => {
   showStatus(s);
-  if (s.state === "off" || s.state === "error") setAir(false);
+  // A soft error is a phrase that failed, not a run that ended.
+  if (s.state === "off" || (s.state === "error" && !s.soft)) setAir(false);
 });
 
 window.mgi.on("message", ({ nick, text, spoken, reason, arg }) => {

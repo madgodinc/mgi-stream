@@ -3,17 +3,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import { WebSocketServer } from "ws";
-import { TikTokLiveConnection, WebcastEvent } from "tiktok-live-connector";
+import { TikTokLiveConnection, WebcastEvent, ControlEvent } from "tiktok-live-connector";
 import { Speaker } from "./tts.js";
 import { decide } from "./filter.js";
 
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript" };
+const RETRY_MS = 15000;
 
 /**
  * Owns everything that runs while the app is "on air": the chat connection, the
  * speech queue, and the local HTTP/WebSocket server that feeds the OBS overlay.
  *
  * Emits: status {state, detail}, message {nick, text, spoken}, queue {size, dropped}.
+ * A status carrying `soft: true` is a hiccup the run survived, not a stop.
  */
 export class StreamServer extends EventEmitter {
   constructor(overlayDir) {
@@ -28,6 +30,7 @@ export class StreamServer extends EventEmitter {
     this.busy = false;
     this.dropped = 0;
     this.running = false;
+    this.retryTimer = null;
   }
 
   get overlayUrl() {
@@ -56,7 +59,9 @@ export class StreamServer extends EventEmitter {
   async stop() {
     this.running = false;
     clearInterval(this.mockTimer);
+    clearTimeout(this.retryTimer);
     this.mockTimer = null;
+    this.retryTimer = null;
     this.queue = [];
 
     try {
@@ -126,26 +131,47 @@ export class StreamServer extends EventEmitter {
       const text = ev?.content ?? ev?.comment ?? "";
       if (text) this.#onChat(nick, text, ev?.userIdentity ?? {});
     });
-    this.conn.on(WebcastEvent.STREAM_END, () =>
-      this.emit("status", { state: "off", code: "ended" }),
-    );
+    this.conn.on(WebcastEvent.STREAM_END, () => this.#retry(cfg, { code: "ended" }));
+    this.conn.on(ControlEvent.DISCONNECTED, () => this.#retry(cfg, { code: "dropped" }));
     this.conn.on("error", (err) =>
-      this.emit("status", { state: "error", detail: err?.message || String(err) }),
+      this.emit("status", { state: "error", soft: true, detail: err?.message || String(err) }),
     );
 
     try {
       const state = await this.conn.connect();
       this.emit("status", { state: "live", detail: `room ${state.roomId}` });
     } catch (err) {
-      const offline = /offline|not.*live/i.test(err.message);
-      this.emit("status", {
-        state: "error",
-        code: offline ? "notLive" : undefined,
-        arg: offline ? cfg.username : undefined,
-        detail: err.message,
-      });
-      throw err;
+      // A wrong channel name never starts working on its own; everything else
+      // does, so it goes back in the queue instead of stopping the run.
+      if (err?.name === "InvalidUniqueIdError") {
+        this.emit("status", { state: "error", code: "badChannel", arg: cfg.username, detail: err.message });
+        throw err;
+      }
+      const offline = err?.name === "UserOfflineError" || /offline|not.*live/i.test(err.message ?? "");
+      this.#retry(cfg, offline ? { code: "waitLive" } : { code: "retrying", arg: err.message });
     }
+  }
+
+  /**
+   * A live room is a moving target: it may not have started yet, and TikTok
+   * drops the socket often enough on mobile that one attempt is not a connection.
+   * So the app sits in `waiting` and keeps knocking until stopped by hand.
+   */
+  #retry(cfg, { code, arg }) {
+    if (!this.running || this.retryTimer) return;
+
+    // Detach before closing: disconnect() fires DISCONNECTED and would land here again.
+    const dead = this.conn;
+    this.conn = null;
+    dead?.removeAllListeners();
+    Promise.resolve(dead?.disconnect()).catch(() => {});
+
+    this.emit("status", { state: "waiting", code, arg: arg ?? cfg.username });
+
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      if (this.running) this.#connect(cfg).catch(() => {});
+    }, RETRY_MS);
   }
 
   #startMock() {

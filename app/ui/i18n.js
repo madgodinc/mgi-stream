@@ -4,7 +4,13 @@
 const RU = {
   channel: "Канал TikTok",
   channelPlaceholder: "@ник",
-  air: { off: "не в эфире", connecting: "подключаюсь", live: "в эфире", error: "проблема" },
+  air: {
+    off: "не в эфире",
+    connecting: "подключаюсь",
+    live: "в эфире",
+    waiting: "жду эфир",
+    error: "проблема",
+  },
   goOnAir: "в эфир",
   stop: "стоп",
 
@@ -49,7 +55,7 @@ const RU = {
   dropped: "выброшено",
 
   emptyTitle: "Впишите канал и выходите в эфир.",
-  emptyBody: "Чат появится здесь, а речь пойдёт в OBS через источник снизу.",
+  emptyBody: "Чат появится здесь, речь зазвучит в этом окне и в OBS через источник снизу.",
 
   reason: {
     ignored: "в чёрном списке",
@@ -68,16 +74,25 @@ const RU = {
   err: {
     noUsername: "Сначала впишите ник канала.",
     portTaken: "Порт $1 занят, выберите другой в настройках.",
-    notLive: "$1 сейчас не в эфире.",
+    badChannel: "Канала $1 не существует, проверьте ник.",
     speech: "Озвучка не удалась: $1",
-    ended: "Стрим закончился.",
+    waitLive: "$1 пока не в эфире. Подключусь, как только начнётся.",
+    ended: "Стрим закончился. Жду следующий.",
+    dropped: "Связь оборвалась, переподключаюсь.",
+    retrying: "Не вышло подключиться ($1), пробую снова.",
   },
 };
 
 const EN = {
   channel: "TikTok channel",
   channelPlaceholder: "@username",
-  air: { off: "off air", connecting: "connecting", live: "on air", error: "problem" },
+  air: {
+    off: "off air",
+    connecting: "connecting",
+    live: "on air",
+    waiting: "waiting",
+    error: "problem",
+  },
   goOnAir: "go on air",
   stop: "stop",
 
@@ -122,7 +137,7 @@ const EN = {
   dropped: "dropped",
 
   emptyTitle: "Enter the channel and go on air.",
-  emptyBody: "Chat shows up here, and the speech plays through the OBS browser source below.",
+  emptyBody: "Chat shows up here, and the speech plays in this window and through the OBS browser source below.",
 
   reason: {
     ignored: "ignored user",
@@ -141,9 +156,12 @@ const EN = {
   err: {
     noUsername: "Enter the channel name first.",
     portTaken: "Port $1 is taken, pick another one in settings.",
-    notLive: "$1 is not live right now.",
+    badChannel: "There is no channel $1, check the name.",
     speech: "Speech failed: $1",
-    ended: "The stream ended.",
+    waitLive: "$1 is not live yet. Connecting as soon as the stream starts.",
+    ended: "The stream ended. Waiting for the next one.",
+    dropped: "Connection dropped, reconnecting.",
+    retrying: "Could not connect ($1), trying again.",
   },
 };
 
