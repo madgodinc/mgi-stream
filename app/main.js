@@ -85,14 +85,13 @@ ipcMain.handle("tts:preview", async (_e, cfg) => {
 
 ipcMain.handle("run:start", async (_e, { cfg, mock }) => {
   const saved = config.save(configDir, cfg);
-  if (!mock && !saved.username.trim()) {
-    return { ok: false, error: "Enter the TikTok username of the stream first." };
-  }
+  if (!mock && !saved.username.trim()) return { ok: false, code: "noUsername" };
   try {
     await server.start(saved, { mock });
     return { ok: true, url: server.overlayUrl };
   } catch (err) {
     await server.stop();
+    // The status event already carried a translatable code for this failure.
     return { ok: false, error: err.message };
   }
 });

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const DEFAULTS = {
+  lang: "ru",
   username: "",
   voice: "ru-RU-DmitryNeural",
   rate: 8, // percent, -50…+100

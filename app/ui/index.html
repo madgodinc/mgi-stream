@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; media-src 'self' data:">
@@ -8,15 +8,19 @@
 </head>
 <body>
 
-<div id="titlebar" class="mono"><span class="mark">MGI</span><span>stream</span></div>
+<div id="titlebar" class="mono">
+  <span class="mark">MGI</span><span>stream</span>
+  <span class="spacer"></span>
+  <span id="lang"><button data-l="ru">ru</button><button data-l="en">en</button></span>
+</div>
 
 <header id="top">
   <div class="field">
-    <label class="mono" for="channel">TikTok channel</label>
-    <input type="text" id="channel" placeholder="@username" spellcheck="false">
+    <label class="mono" for="channel" data-t="channel"></label>
+    <input type="text" id="channel" data-ph="channelPlaceholder" spellcheck="false">
   </div>
-  <div id="status" class="mono"><i></i><span id="statusText">off air</span></div>
-  <button id="air">go on air</button>
+  <div id="status" class="mono"><i></i><span id="statusText"></span></div>
+  <button id="air"></button>
 </header>
 
 <main id="body">
@@ -24,70 +28,74 @@
   <aside id="settings">
 
     <section class="section">
-      <h2>Voice</h2>
+      <h2 data-t="voice"></h2>
       <div class="field">
-        <label class="mono" for="voice">Speaker</label>
+        <label class="mono" for="voice" data-t="speaker"></label>
         <select id="voice"></select>
       </div>
 
       <div class="slider">
-        <div class="head mono"><span>Speed</span><b id="rateVal">+8%</b></div>
+        <div class="head mono"><span data-t="speed"></span><b id="rateVal"></b></div>
         <input type="range" id="rate" min="-50" max="100" step="1">
       </div>
 
       <div class="slider">
-        <div class="head mono"><span>Pitch</span><b id="pitchVal">+0Hz</b></div>
+        <div class="head mono"><span data-t="pitch"></span><b id="pitchVal"></b></div>
         <input type="range" id="pitch" min="-50" max="50" step="1">
       </div>
 
-      <button class="ghost" id="test">test voice</button>
+      <button class="ghost" id="test" data-t="testVoice"></button>
     </section>
 
     <section class="section">
-      <h2>Who gets read</h2>
+      <h2 data-t="who"></h2>
       <div class="segments" id="audience">
-        <button data-v="everyone">everyone</button>
-        <button data-v="followers">followers</button>
-        <button data-v="subscribers">subs</button>
-        <button data-v="moderators">mods</button>
-        <button data-v="whitelist">list only</button>
+        <button data-v="everyone" data-t="everyone"></button>
+        <button data-v="followers" data-t="followers"></button>
+        <button data-v="subscribers" data-t="subscribers"></button>
+        <button data-v="moderators" data-t="moderators"></button>
+        <button data-v="whitelist" data-t="whitelist"></button>
       </div>
 
       <div class="inline">
-        <div class="check" id="requirePrefix"><i></i><span>Only messages starting with</span></div>
+        <div class="check" id="requirePrefix"><i></i><span data-t="prefixOnly"></span></div>
         <input type="text" id="prefix" maxlength="3" spellcheck="false">
       </div>
 
       <div class="field">
-        <label class="mono" for="allowUsers">Always read (one nickname per line)</label>
+        <label class="mono" for="allowUsers" data-t="alwaysRead"></label>
         <textarea id="allowUsers" rows="3" spellcheck="false"></textarea>
       </div>
 
       <div class="field">
-        <label class="mono" for="ignoreUsers">Never read</label>
+        <label class="mono" for="ignoreUsers" data-t="neverRead"></label>
         <textarea id="ignoreUsers" rows="3" spellcheck="false"></textarea>
       </div>
     </section>
 
     <section class="section">
-      <h2>Reading</h2>
-      <div class="check" id="sayNickname"><i></i><span>Say the nickname first</span></div>
-      <div class="check" id="skipEmojiOnly"><i></i><span>Skip emoji-only messages</span></div>
-      <div class="check" id="skipLinks"><i></i><span>Skip messages with links</span></div>
-      <div class="check" id="playInApp"><i></i><span>Play sound in this window too</span></div>
+      <h2 data-t="reading"></h2>
+      <div class="check" id="sayNickname"><i></i><span data-t="sayNickname"></span></div>
+      <div class="field" id="templateField">
+        <input type="text" id="nicknameTemplate" spellcheck="false">
+      </div>
+
+      <div class="check" id="skipEmojiOnly"><i></i><span data-t="skipEmoji"></span></div>
+      <div class="check" id="skipLinks"><i></i><span data-t="skipLinks"></span></div>
+      <div class="check" id="playInApp"><i></i><span data-t="playInApp"></span></div>
 
       <div class="slider">
-        <div class="head mono"><span>Cut messages after</span><b id="maxCharsVal">180</b></div>
+        <div class="head mono"><span data-t="cutAfter"></span><b id="maxCharsVal"></b></div>
         <input type="range" id="maxChars" min="40" max="400" step="10">
       </div>
 
       <div class="slider">
-        <div class="head mono"><span>Queue depth</span><b id="maxQueueVal">12</b></div>
+        <div class="head mono"><span data-t="queueDepth"></span><b id="maxQueueVal"></b></div>
         <input type="range" id="maxQueue" min="3" max="40" step="1">
       </div>
 
       <div class="field">
-        <label class="mono" for="port">Overlay port</label>
+        <label class="mono" for="port" data-t="port"></label>
         <input type="text" id="port" style="width:110px" spellcheck="false">
       </div>
     </section>
@@ -96,24 +104,24 @@
 
   <section id="flow">
     <div id="empty">
-      Enter the channel and go on air.<br>
-      Chat shows up here, and the speech plays through the OBS browser source below.
+      <span data-t="emptyTitle"></span><br>
+      <span data-t="emptyBody"></span>
     </div>
   </section>
 
 </main>
 
 <footer id="foot">
-  <span class="mono">OBS browser source</span>
-  <span class="url" id="url">not running</span>
-  <button class="ghost" id="copy">copy</button>
-  <button class="ghost" id="open">open</button>
-  <button class="ghost" id="demo">demo chat</button>
+  <span class="mono" data-t="obsSource"></span>
+  <span class="url" id="url"></span>
+  <button class="ghost" id="copy" data-t="copy"></button>
+  <button class="ghost" id="open" data-t="open"></button>
+  <button class="ghost" id="demo" data-t="demo"></button>
   <span class="spacer"></span>
   <span id="note"></span>
-  <span class="mono" id="queue">queue 0</span>
+  <span class="mono" id="queue"></span>
 </footer>
 
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>

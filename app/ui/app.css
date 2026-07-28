@@ -43,6 +43,20 @@ body {
   color: var(--faint);
 }
 #titlebar .mark { color: var(--hot); letter-spacing: .3em; }
+#titlebar .spacer { flex: 1; }
+
+#lang { display: flex; gap: 2px; padding-right: 140px; }
+#lang button {
+  --cut: 0px;
+  border: 0;
+  color: var(--faint);
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: .12em;
+  padding: 3px 7px;
+}
+#lang button:hover { color: var(--ink); }
+#lang button.sel { color: var(--hot); border-bottom: 1px solid var(--hot); }
 
 /* ── top bar: channel + air switch ─────────────────────────────────────────── */
 

@@ -93,12 +93,14 @@ export class StreamServer extends EventEmitter {
       });
 
       this.http.once("error", (err) => {
-        const detail =
-          err.code === "EADDRINUSE"
-            ? `port ${port} is taken, pick another one in settings`
-            : err.message;
-        this.emit("status", { state: "error", detail });
-        reject(new Error(detail));
+        const taken = err.code === "EADDRINUSE";
+        this.emit("status", {
+          state: "error",
+          code: taken ? "portTaken" : undefined,
+          arg: taken ? port : undefined,
+          detail: err.message,
+        });
+        reject(err);
       });
       this.http.listen(port, () => resolve());
     });
@@ -125,7 +127,7 @@ export class StreamServer extends EventEmitter {
       if (text) this.#onChat(nick, text, ev?.userIdentity ?? {});
     });
     this.conn.on(WebcastEvent.STREAM_END, () =>
-      this.emit("status", { state: "off", detail: "the stream ended" }),
+      this.emit("status", { state: "off", code: "ended" }),
     );
     this.conn.on("error", (err) =>
       this.emit("status", { state: "error", detail: err?.message || String(err) }),
@@ -138,7 +140,9 @@ export class StreamServer extends EventEmitter {
       const offline = /offline|not.*live/i.test(err.message);
       this.emit("status", {
         state: "error",
-        detail: offline ? `${cfg.username} is not live right now` : err.message,
+        code: offline ? "notLive" : undefined,
+        arg: offline ? cfg.username : undefined,
+        detail: err.message,
       });
       throw err;
     }
@@ -163,7 +167,13 @@ export class StreamServer extends EventEmitter {
 
   #onChat(nick, text, identity = {}) {
     const verdict = decide(this.cfg, { nick, text, identity });
-    this.emit("message", { nick, text, spoken: verdict.speak, reason: verdict.reason });
+    this.emit("message", {
+      nick,
+      text,
+      spoken: verdict.speak,
+      reason: verdict.reason,
+      arg: verdict.arg,
+    });
     if (!verdict.speak) return;
     const phrase = verdict.phrase;
 
@@ -191,7 +201,7 @@ export class StreamServer extends EventEmitter {
         this.emit("speak", payload);
       }
     } catch (err) {
-      this.emit("status", { state: "error", detail: `speech failed: ${err.message}` });
+      this.emit("status", { state: "error", code: "speech", arg: err.message, detail: err.message });
     }
 
     this.emit("queue", { size: this.queue.length, dropped: this.dropped });

@@ -56,6 +56,20 @@ test("long messages are cut instead of read forever", () => {
   assert.equal(run(cfg, msg("viewer", "x".repeat(50))).phrase, "x".repeat(10) + "…");
 });
 
+test("refusals carry a code the UI can translate, not a sentence", () => {
+  assert.equal(run({}, msg("viewer", "🔥")).reason, "emoji");
+  assert.equal(run({}, msg("viewer", "www.spam.com")).reason, "link");
+  assert.equal(run({ ignoreUsers: ["bot"] }, msg("bot", "привет")).reason, "ignored");
+
+  const tier = run({ audience: "subscribers" }, msg("viewer", "привет"));
+  assert.equal(tier.reason, "tier");
+  assert.equal(tier.arg, "subscribers");
+
+  const prefix = run({ requirePrefix: true, prefix: "#" }, msg("viewer", "привет"));
+  assert.equal(prefix.reason, "prefix");
+  assert.equal(prefix.arg, "#");
+});
+
 test("the nickname template is applied", () => {
   const cfg = { sayNickname: true, nicknameTemplate: "{nick} says." };
   assert.equal(run(cfg, msg("Катя", "привет")).phrase, "Катя says. привет");

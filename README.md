@@ -4,6 +4,8 @@ Reads your TikTok LIVE chat out loud, into OBS, from your own machine.
 
 ![mgi-stream reading a chat](docs/screenshot.png)
 
+Interface in Russian and English, switch in the top right corner.
+
 TikFinity does this as a hosted service you do not control. mgi-stream does the same job as a Windows app that runs on your PC: it joins the live chat, drops what should not be spoken, synthesizes each message with Microsoft Edge neural voices, and plays it through a page you add to OBS as a browser source.
 
 ## Install
