@@ -28,8 +28,11 @@ const OFFLINE = /offline|isn'?t\s+online|not\s+online|not\s+live|has\s+ended/i;
  * Owns everything that runs while the app is "on air": the chat connection, the
  * speech queue, and the local HTTP/WebSocket server that feeds the OBS overlay.
  *
- * Emits: status {state, detail}, message {nick, text, spoken}, queue {size, dropped}.
+ * Emits: status {state, detail}, message {nick, text, spoken}, queue {size, dropped},
+ * speak {nick, text, audio}, unspoken {nick, text, error}.
  * A status carrying `soft: true` is a hiccup the run survived, not a stop.
+ * Speech failures are always soft: a phrase that cannot be voiced is skipped
+ * and the chat connection and overlay keep running.
  */
 export class StreamServer extends EventEmitter {
   constructor(overlayDir) {
@@ -46,6 +49,9 @@ export class StreamServer extends EventEmitter {
     this.running = false;
     this.retryTimer = null;
     this.connecting = false;
+    // The last "live" status, put back once speech recovers from a failure.
+    this.liveStatus = null;
+    this.speechFailing = false;
   }
 
   get overlayUrl() {
@@ -59,16 +65,29 @@ export class StreamServer extends EventEmitter {
     this.dropped = 0;
     this.busy = false;
     this.speaker = new Speaker(cfg);
+    this.speechFailing = false;
 
     await this.#serve(cfg.port);
     this.running = true;
 
     if (mock) {
       this.#startMock();
-      this.emit("status", { state: "live", detail: "mock chat" });
+      this.#live({ state: "live", detail: "mock chat" });
       return;
     }
+    // A cold voice takes its slow first request now, not on the first chat line.
+    this.speaker.warm();
     await this.#connect(cfg);
+  }
+
+  #status(status) {
+    this.shown = status;
+    this.emit("status", status);
+  }
+
+  #live(status) {
+    this.liveStatus = status;
+    this.#status(status);
   }
 
   async stop() {
@@ -96,7 +115,7 @@ export class StreamServer extends EventEmitter {
     await new Promise((done) => (this.http ? this.http.close(done) : done()));
     this.wss = null;
     this.http = null;
-    this.emit("status", { state: "off", detail: "" });
+    this.#status({ state: "off", detail: "" });
   }
 
   /**
@@ -133,7 +152,7 @@ export class StreamServer extends EventEmitter {
 
       this.http.once("error", (err) => {
         const taken = err.code === "EADDRINUSE";
-        this.emit("status", {
+        this.#status({
           state: "error",
           code: taken ? "portTaken" : undefined,
           arg: taken ? port : undefined,
@@ -156,7 +175,7 @@ export class StreamServer extends EventEmitter {
   // ── chat source ────────────────────────────────────────────────────────────
 
   async #connect(cfg) {
-    this.emit("status", { state: "connecting", detail: cfg.username });
+    this.#status({ state: "connecting", detail: cfg.username });
 
     // The second argument is required: the constructor reads fields off it unguarded.
     this.conn = new TikTokLiveConnection(cfg.username, { signApiKey: cfg.signApiKey || undefined });
@@ -165,7 +184,7 @@ export class StreamServer extends EventEmitter {
       const nick = ev?.user?.nickname || ev?.user?.uniqueId || "someone";
       // v3 of the protocol carries the text in `content`; older payloads use `comment`.
       const text = ev?.content ?? ev?.comment ?? "";
-      if (text) this.#onChat(nick, text, ev?.userIdentity ?? {});
+      if (text) this.onChat(nick, text, ev?.userIdentity ?? {});
     });
     this.conn.on(WebcastEvent.STREAM_END, () => this.#retry(cfg, { code: "ended" }));
     this.conn.on(ControlEvent.DISCONNECTED, () => this.#retry(cfg, { code: "dropped" }));
@@ -174,19 +193,19 @@ export class StreamServer extends EventEmitter {
     // the connection is up and its errors are news.
     this.conn.on("error", (err) => {
       if (!this.connecting && !this.retryTimer) {
-        this.emit("status", { state: "error", soft: true, detail: describe(err) });
+        this.#status({ state: "error", soft: true, detail: describe(err) });
       }
     });
 
     try {
       this.connecting = true;
       const state = await this.conn.connect();
-      this.emit("status", { state: "live", detail: `room ${state.roomId}` });
+      this.#live({ state: "live", detail: `room ${state.roomId}` });
     } catch (err) {
       // A wrong channel name never starts working on its own; everything else
       // does, so it goes back in the queue instead of stopping the run.
       if (err?.name === "InvalidUniqueIdError") {
-        this.emit("status", { state: "error", code: "badChannel", arg: cfg.username, detail: describe(err) });
+        this.#status({ state: "error", code: "badChannel", arg: cfg.username, detail: describe(err) });
         throw err;
       }
       const reason = describe(err);
@@ -211,7 +230,7 @@ export class StreamServer extends EventEmitter {
     dead?.removeAllListeners();
     Promise.resolve(dead?.disconnect()).catch(() => {});
 
-    this.emit("status", { state: "waiting", code, arg: arg ?? cfg.username });
+    this.#status({ state: "waiting", code, arg: arg ?? cfg.username });
 
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
@@ -231,12 +250,13 @@ export class StreamServer extends EventEmitter {
       ["Катя", "!сколько ты уже стримишь сегодня", sub],
     ];
     let i = 0;
-    this.mockTimer = setInterval(() => this.#onChat(...samples[i++ % samples.length]), 5000);
+    this.mockTimer = setInterval(() => this.onChat(...samples[i++ % samples.length]), 5000);
   }
 
   // ── speech queue ───────────────────────────────────────────────────────────
 
-  #onChat(nick, text, identity = {}) {
+  /** Every chat line enters here, from TikTok, the demo timer or a test. */
+  onChat(nick, text, identity = {}) {
     const verdict = decide(this.cfg, { nick, text, identity });
     this.emit("message", {
       nick,
@@ -266,6 +286,11 @@ export class StreamServer extends EventEmitter {
 
     try {
       const mp3 = await this.speaker.synth(item.phrase);
+      if (this.speechFailing && this.running) {
+        this.speechFailing = false;
+        // Only undo our own complaint; a reconnect in progress keeps its status.
+        if (this.shown?.code === "speech" && this.liveStatus) this.#status(this.liveStatus);
+      }
       if (this.running) {
         const payload = { kind: "speak", nick: item.nick, text: item.text, audio: mp3.toString("base64") };
         this.#broadcast(payload);
@@ -274,7 +299,12 @@ export class StreamServer extends EventEmitter {
         this.emit("speak", this.cfg.playInApp ? payload : { ...payload, audio: "" });
       }
     } catch (err) {
-      this.emit("status", { state: "error", code: "speech", arg: err.message, detail: err.message });
+      // Skip the phrase, never the session.
+      if (this.running) {
+        this.speechFailing = true;
+        this.emit("unspoken", { nick: item.nick, text: item.text, error: err.message });
+        this.#status({ state: "error", soft: true, code: "speech", arg: err.message, detail: err.message });
+      }
     }
 
     this.emit("queue", { size: this.queue.length, dropped: this.dropped });

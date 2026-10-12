@@ -14,6 +14,14 @@ const RU = {
   goOnAir: "в эфир",
   stop: "стоп",
 
+  tabVoice: "Голос",
+  tabWho: "Кого читать",
+  tabReading: "Чтение",
+  tabObs: "OBS",
+  obsTitle: "OBS и связь",
+  obsHowTo: "В OBS добавьте источник «Браузер» и вставьте адрес из нижней строки. Звук пойдёт через него, окно приложения можно свернуть.",
+  chatTitle: "Чат",
+
   voice: "Голос",
   ruMale: "рус м",
   ruFemale: "рус ж",
@@ -67,6 +75,7 @@ const RU = {
     short: "слишком коротко",
     emoji: "одни эмодзи",
     link: "со ссылкой",
+    speechFailed: "не озвучено, сбой синтеза",
   },
   tier: {
     followers: "подписчик",
@@ -77,7 +86,7 @@ const RU = {
     noUsername: "Сначала впишите ник канала.",
     portTaken: "Порт $1 занят, выберите другой в настройках.",
     badChannel: "Канала $1 не существует, проверьте ник.",
-    speech: "Озвучка не удалась: $1",
+    speech: "Фраза пропущена, синтез не ответил: $1",
     waitLive: "$1 пока не в эфире. Подключусь, как только начнётся.",
     ended: "Стрим закончился. Жду следующий.",
     dropped: "Связь оборвалась, переподключаюсь.",
@@ -97,6 +106,14 @@ const EN = {
   },
   goOnAir: "go on air",
   stop: "stop",
+
+  tabVoice: "Voice",
+  tabWho: "Who",
+  tabReading: "Reading",
+  tabObs: "OBS",
+  obsTitle: "OBS and connection",
+  obsHowTo: "In OBS add a Browser source and paste the address from the bottom bar. The speech plays through it, so this window can stay minimized.",
+  chatTitle: "Chat",
 
   voice: "Voice",
   ruMale: "ru male",
@@ -151,6 +168,7 @@ const EN = {
     short: "too short",
     emoji: "emoji only",
     link: "contains a link",
+    speechFailed: "not voiced, speech failed",
   },
   tier: {
     followers: "follower",
@@ -161,7 +179,7 @@ const EN = {
     noUsername: "Enter the channel name first.",
     portTaken: "Port $1 is taken, pick another one in settings.",
     badChannel: "There is no channel $1, check the name.",
-    speech: "Speech failed: $1",
+    speech: "Phrase skipped, speech failed: $1",
     waitLive: "$1 is not live yet. Connecting as soon as the stream starts.",
     ended: "The stream ended. Waiting for the next one.",
     dropped: "Connection dropped, reconnecting.",

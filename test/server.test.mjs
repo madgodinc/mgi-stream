@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { WebSocket } from "ws";
 import { StreamServer } from "../app/core/server.js";
 import { DEFAULTS } from "../app/core/config.js";
+import { Speaker } from "../app/core/tts.js";
 
 const PORT = 8139;
 const overlayDir = new URL("../app/overlay", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
@@ -57,4 +58,37 @@ test("settings edited while off air change nothing", async () => {
   const s = new StreamServer(overlayDir);
   s.update({ ...DEFAULTS, audience: "moderators" });
   assert.equal(s.cfg, null);
+});
+
+test("a speech failure skips the phrase and never stops the session", async () => {
+  const s = await started();
+  const events = [];
+  for (const name of ["status", "speak", "unspoken"]) s.on(name, (e) => events.push([name, e]));
+
+  // The first phrase fails every try, the second one works.
+  let calls = 0;
+  s.speaker = new Speaker(DEFAULTS, {
+    attempts: 2,
+    fallback: null,
+    request: async () => {
+      calls++;
+      if (calls <= 2) throw new Error("speech service closed the socket (1006) before the end");
+      return Buffer.from("mp3");
+    },
+  });
+
+  s.onChat("one", "first phrase");
+  s.onChat("two", "second phrase");
+  await new Promise((done) => setTimeout(done, 50));
+
+  const unspoken = events.filter(([n]) => n === "unspoken").map(([, e]) => e.text);
+  const spoken = events.filter(([n]) => n === "speak").map(([, e]) => e.text);
+  assert.deepEqual(unspoken, ["first phrase"]);
+  assert.deepEqual(spoken, ["second phrase"], "the next phrase is still voiced");
+  assert.equal(s.running, true, "the session keeps running");
+
+  const statuses = events.filter(([n]) => n === "status").map(([, e]) => e);
+  assert.ok(statuses.every((e) => e.state !== "off" && (e.state !== "error" || e.soft)), "no hard stop");
+  assert.equal(statuses.at(-1).state, "live", "recovery puts the live status back");
+  await s.stop();
 });

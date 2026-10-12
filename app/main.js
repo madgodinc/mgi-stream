@@ -19,6 +19,7 @@ server.on("status", (s) => send("status", s));
 server.on("message", (m) => send("message", m));
 server.on("queue", (q) => send("queue", q));
 server.on("speak", (s) => send("speak", s));
+server.on("unspoken", (u) => send("unspoken", u));
 
 function createWindow() {
   win = new BrowserWindow({
@@ -26,11 +27,12 @@ function createWindow() {
     height: 760,
     minWidth: 880,
     minHeight: 620,
-    backgroundColor: "#0b0a09",
+    backgroundColor: "#07060c",
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#0b0a09", symbolColor: "#8b8478", height: 38 },
+    // Transparent, so the sky runs under the caption buttons instead of a black plate.
+    titleBarOverlay: { color: "#00000000", symbolColor: "#a59fba", height: 64 },
     webPreferences: {
       preload: path.join(here, "preload.cjs"),
       contextIsolation: true,
@@ -40,7 +42,9 @@ function createWindow() {
 
   // MGI_DEMO=1 boots straight into the sample chat, which is how the screenshots
   // in the README are taken and a quick way to check audio after a change.
-  win.loadFile(path.join(here, "ui", "index.html"), process.env.MGI_DEMO ? { search: "demo" } : {});
+  // MGI_TAB=who|reading|obs opens on that tab, for the per-tab screenshots.
+  const query = [process.env.MGI_DEMO && "demo", process.env.MGI_TAB && `tab=${process.env.MGI_TAB}`].filter(Boolean).join("&");
+  win.loadFile(path.join(here, "ui", "index.html"), query ? { search: query } : {});
   win.once("ready-to-show", () => win.show());
 
   // Links in the UI belong in the user's browser, not in a second app window.

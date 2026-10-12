@@ -1,17 +1,38 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-tab="voice">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; media-src 'self' data:">
 <title>mgi-stream</title>
+<link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 
-<div id="titlebar" class="mono">
-  <span class="mark">MGI</span><span>stream</span>
-  <span class="spacer"></span>
-  <span id="lang"><button data-l="ru">ru</button><button data-l="en">en</button></span>
+<div class="sky" aria-hidden="true">
+  <div class="sky__glow sky__glow--a"></div>
+  <div class="sky__glow sky__glow--b"></div>
+  <div class="sky__glow sky__glow--c"></div>
+  <div class="sky__fog"></div>
+  <div class="sky__embers" id="embers"></div>
+</div>
+
+<div id="titlebar">
+  <div class="brand">
+    <span class="brand__mgi">MGI</span>
+    <span class="brand__word">Stream</span>
+  </div>
+  <nav class="tabs" id="tabs">
+    <span class="tabs__pill" id="pill"></span>
+    <button type="button" class="tab is-on" data-tab="voice" data-t="tabVoice"></button>
+    <button type="button" class="tab" data-tab="who" data-t="tabWho"></button>
+    <button type="button" class="tab" data-tab="reading" data-t="tabReading"></button>
+    <button type="button" class="tab" data-tab="obs" data-t="tabObs"></button>
+  </nav>
+  <div class="bar__right">
+    <div id="status" class="mono"><i></i><span id="statusText"></span></div>
+    <span id="lang"><button data-l="ru">ru</button><button data-l="en">en</button></span>
+  </div>
 </div>
 
 <header id="top">
@@ -19,15 +40,14 @@
     <label class="mono" for="channel" data-t="channel"></label>
     <input type="text" id="channel" data-ph="channelPlaceholder" spellcheck="false">
   </div>
-  <div id="status" class="mono"><i></i><span id="statusText"></span></div>
-  <button id="air"></button>
+  <button id="air" class="primary"></button>
 </header>
 
 <main id="body">
 
   <aside id="settings">
 
-    <section class="section">
+    <section class="section" data-pane="voice">
       <h2 data-t="voice"></h2>
       <div class="segments" id="presets">
         <button data-voice="ru-RU-DmitryNeural" data-t="ruMale"></button>
@@ -51,10 +71,10 @@
         <input type="range" id="pitch" min="-50" max="50" step="1">
       </div>
 
-      <button class="ghost" id="test" data-t="testVoice"></button>
+      <button class="secondary" id="test" data-t="testVoice"></button>
     </section>
 
-    <section class="section">
+    <section class="section" data-pane="who">
       <h2 data-t="who"></h2>
       <div class="segments" id="audience">
         <button data-v="everyone" data-t="everyone"></button>
@@ -80,7 +100,7 @@
       </div>
     </section>
 
-    <section class="section">
+    <section class="section" data-pane="reading">
       <h2 data-t="reading"></h2>
       <div class="check" id="sayNickname"><i></i><span data-t="sayNickname"></span></div>
       <div class="field" id="templateField">
@@ -100,6 +120,11 @@
         <div class="head mono"><span data-t="queueDepth"></span><b id="maxQueueVal"></b></div>
         <input type="range" id="maxQueue" min="3" max="40" step="1">
       </div>
+    </section>
+
+    <section class="section" data-pane="obs">
+      <h2 data-t="obsTitle"></h2>
+      <p class="hint" data-t="obsHowTo"></p>
 
       <div class="field">
         <label class="mono" for="port" data-t="port"></label>
@@ -115,10 +140,13 @@
 
   </aside>
 
-  <section id="flow">
-    <div id="empty">
-      <span data-t="emptyTitle"></span><br>
-      <span data-t="emptyBody"></span>
+  <section class="feed">
+    <h2 data-t="chatTitle"></h2>
+    <div id="flow">
+      <div id="empty">
+        <span data-t="emptyTitle"></span><br>
+        <span data-t="emptyBody"></span>
+      </div>
     </div>
   </section>
 
@@ -127,9 +155,9 @@
 <footer id="foot">
   <span class="mono" data-t="obsSource"></span>
   <span class="url" id="url"></span>
-  <button class="ghost" id="copy" data-t="copy"></button>
-  <button class="ghost" id="open" data-t="open"></button>
-  <button class="ghost" id="demo" data-t="demo"></button>
+  <button class="secondary small" id="copy" data-t="copy"></button>
+  <button class="secondary small" id="open" data-t="open"></button>
+  <button class="secondary small" id="demo" data-t="demo"></button>
   <span class="spacer"></span>
   <span id="note"></span>
   <span class="mono" id="queue"></span>

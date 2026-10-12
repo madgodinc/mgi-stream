@@ -14,6 +14,57 @@ let cfg = null;
 let onAir = false;
 let lastStatus = { state: "off" };
 
+// ── the MGI look: embers, rest in the background, tabs ────────────────────────
+
+(function embers() {
+  const box = $("embers");
+  // Fixed per index so the sky looks the same on every launch.
+  const hash = (i, k) => {
+    const x = Math.sin(i * 127.1 + k * 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  for (let i = 0; i < 26; i++) {
+    const s = document.createElement("span");
+    const size = 2 + hash(i, 1) * 3;
+    s.style.cssText = `left:${hash(i, 2) * 100}%;width:${size}px;height:${size}px;animation-duration:${10 + hash(i, 3) * 12}s;animation-delay:${-hash(i, 4) * 22}s;--dx:${(hash(i, 5) - 0.5) * 160}px`;
+    s.dataset.tone = String(i % 3);
+    box.appendChild(s);
+  }
+})();
+
+// Decoration rests while the window is in the background, so it never costs
+// the stream encoder a frame.
+const away = () => document.documentElement.classList.toggle("is-away", !document.hasFocus() || document.hidden);
+addEventListener("focus", away);
+addEventListener("blur", away);
+document.addEventListener("visibilitychange", away);
+away();
+
+const TABS = ["voice", "who", "reading", "obs"];
+let tab = "voice";
+function setTab(next) {
+  const from = TABS.indexOf(tab);
+  const to = TABS.indexOf(next);
+  tab = next;
+  document.documentElement.dataset.tab = next;
+  $("pill").style.transform = `translateX(${to * 100}%)`;
+  for (const b of document.querySelectorAll(".tab")) b.classList.toggle("is-on", b.dataset.tab === next);
+  for (const p of document.querySelectorAll("[data-pane]")) {
+    const on = p.dataset.pane === next;
+    p.classList.toggle("is-on", on);
+    p.classList.toggle("from-left", on && to < from);
+  }
+  $("settings").scrollTop = 0;
+}
+for (const b of document.querySelectorAll(".tab")) b.onclick = () => setTab(b.dataset.tab);
+setTab(new URLSearchParams(location.search).get("tab") ?? "voice");
+
+// The range track paints its filled part from --fill.
+function fillRange(el) {
+  const fill = ((el.value - el.min) / (el.max - el.min)) * 100;
+  el.style.setProperty("--fill", `${fill}%`);
+}
+
 // ── config <-> controls ───────────────────────────────────────────────────────
 
 function paint() {
@@ -28,6 +79,7 @@ function paint() {
   for (const key of CHECKS) $(key).classList.toggle("on", Boolean(cfg[key]));
   for (const key of Object.keys(SLIDERS)) {
     $(key).value = cfg[key];
+    fillRange($(key));
     $(key + "Val").textContent = SLIDERS[key](Number(cfg[key]));
   }
   for (const b of $("audience").children) b.classList.toggle("sel", b.dataset.v === cfg.audience);
@@ -203,6 +255,7 @@ for (const key of CHECKS) {
 
 for (const key of Object.keys(SLIDERS)) {
   $(key).oninput = () => {
+    fillRange($(key));
     $(key + "Val").textContent = SLIDERS[key](Number($(key).value));
     touched();
   };
@@ -250,6 +303,18 @@ window.mgi.on("message", ({ nick, text, spoken, reason, arg }) => {
   // leaves its row unclaimed, so the oldest go overboard instead of piling up
   // for the length of the stream.
   if (waiting.size > 60) waiting.delete(waiting.keys().next().value);
+});
+
+// A phrase the speech service never voiced: its row turns grey with the reason,
+// the run goes on.
+window.mgi.on("unspoken", ({ nick, text }) => {
+  const key = nick + " " + text;
+  const el = waiting.get(key);
+  waiting.delete(key);
+  if (!el) return;
+  el.className = "line mute";
+  el.dataset.reason = "speechFailed";
+  label(el);
 });
 
 window.mgi.on("queue", ({ size, dropped }) => {
