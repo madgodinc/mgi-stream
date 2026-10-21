@@ -50,6 +50,7 @@
     <section class="section" data-pane="voice">
       <h2 data-t="voice"></h2>
       <div class="segments" id="presets">
+        <button data-voice="mgi:57" data-t="madVoice"></button>
         <button data-voice="ru-RU-DmitryNeural" data-t="ruMale"></button>
         <button data-voice="ru-RU-SvetlanaNeural" data-t="ruFemale"></button>
         <button data-voice="en-US-AndrewNeural" data-t="enMale"></button>
@@ -105,6 +106,14 @@
       <div class="check" id="sayNickname"><i></i><span data-t="sayNickname"></span></div>
       <div class="field" id="templateField">
         <input type="text" id="nicknameTemplate" spellcheck="false">
+        <div class="slider">
+          <div class="head mono"><span data-t="nickRate"></span><b id="nickRateVal"></b></div>
+          <input type="range" id="nickRate" min="0" max="100" step="5">
+        </div>
+        <div class="slider">
+          <div class="head mono"><span data-t="nickPause"></span><b id="nickPauseVal"></b></div>
+          <input type="range" id="nickPause" min="0" max="1000" step="50">
+        </div>
       </div>
 
       <div class="check" id="skipEmojiOnly"><i></i><span data-t="skipEmoji"></span></div>

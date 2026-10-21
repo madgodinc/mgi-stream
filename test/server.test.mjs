@@ -65,14 +65,13 @@ test("a speech failure skips the phrase and never stops the session", async () =
   const events = [];
   for (const name of ["status", "speak", "unspoken"]) s.on(name, (e) => events.push([name, e]));
 
-  // The first phrase fails every try, the second one works.
-  let calls = 0;
+  // The first phrase fails every try, the second one works. Keyed on the text,
+  // not a call count: a phrase with a nickname is two requests.
   s.speaker = new Speaker(DEFAULTS, {
     attempts: 2,
     fallback: null,
-    request: async () => {
-      calls++;
-      if (calls <= 2) throw new Error("speech service closed the socket (1006) before the end");
+    request: async (_voice, _prosody, text) => {
+      if (text.includes("first")) throw new Error("speech service closed the socket (1006) before the end");
       return Buffer.from("mp3");
     },
   });

@@ -10,6 +10,39 @@ import { decide } from "./filter.js";
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript" };
 const RETRY_MS = 15000;
 
+/**
+ * TikTok's timestamps come from TikTok's clock, not this machine's. A few
+ * seconds of slack keeps a genuinely new message from being mistaken for
+ * history; the backlog it has to reject is minutes old, so the margin is safe.
+ */
+const CLOCK_SLACK_MS = 5000;
+
+/**
+ * A reconnect can overlap the socket it replaces, and the room itself sometimes
+ * repeats a line. Either way the same message arrives twice, and a comment read
+ * out loud twice is the most audible bug this app has, so the ids that were
+ * spoken recently are remembered and a repeat is dropped.
+ */
+const RECENT_IDS = 400;
+
+export class RecentIds {
+  constructor(limit = RECENT_IDS) {
+    this.limit = limit;
+    this.ids = new Set();
+  }
+
+  /** True the first time an id is offered; false for every repeat after that. */
+  fresh(id) {
+    // A message with no id is let through: going silent is worse than a rare double.
+    if (!id) return true;
+    if (this.ids.has(id)) return false;
+    this.ids.add(id);
+    // A Set keeps insertion order, so the first entry is the oldest.
+    if (this.ids.size > this.limit) this.ids.delete(this.ids.values().next().value);
+    return true;
+  }
+}
+
 /** The connector throws plain Errors but emits bare objects, so String() alone gives "[object Object]". */
 function describe(err) {
   const text = err?.message ?? err?.error?.message ?? err?.exception?.message ?? String(err ?? "");
@@ -43,6 +76,7 @@ export class StreamServer extends EventEmitter {
     this.wss = null;
     this.conn = null;
     this.speaker = null;
+    this.seen = new RecentIds();
     this.queue = [];
     this.busy = false;
     this.dropped = 0;
@@ -64,6 +98,8 @@ export class StreamServer extends EventEmitter {
     this.queue = [];
     this.dropped = 0;
     this.busy = false;
+    // A fresh run is a fresh room: nothing said before it counts as already heard.
+    this.seen = new RecentIds();
     this.speaker = new Speaker(cfg);
     this.speechFailing = false;
 
@@ -98,12 +134,7 @@ export class StreamServer extends EventEmitter {
     this.retryTimer = null;
     this.queue = [];
 
-    try {
-      await this.conn?.disconnect();
-    } catch {
-      // Disconnecting a socket that already died is not worth reporting.
-    }
-    this.conn = null;
+    await this.#drop(this.conn);
 
     // An OBS browser source holds its WebSocket open, and closing the ws server
     // does not close the sockets it accepted. Without this, http.close() waits
@@ -126,7 +157,7 @@ export class StreamServer extends EventEmitter {
   update(cfg) {
     if (!this.running || !this.cfg) return;
     const revoiced =
-      cfg.voice !== this.cfg.voice || cfg.rate !== this.cfg.rate || cfg.pitch !== this.cfg.pitch;
+      ["voice", "rate", "pitch", "nickRate", "nickPause", "mgiUrl", "mgiKey"].some((k) => cfg[k] !== this.cfg[k]);
     this.cfg = { ...cfg, username: this.cfg.username, port: this.cfg.port };
     if (revoiced) this.speaker = new Speaker(this.cfg);
   }
@@ -178,30 +209,69 @@ export class StreamServer extends EventEmitter {
     this.#status({ state: "connecting", detail: cfg.username });
 
     // The second argument is required: the constructor reads fields off it unguarded.
-    this.conn = new TikTokLiveConnection(cfg.username, { signApiKey: cfg.signApiKey || undefined });
+    // `processInitialData` replays the batch of messages TikTok hands over on
+    // connect, which is chat that already scrolled past. Reading it out loud
+    // means the voice starts minutes behind the room, and after a dropped
+    // socket it repeats what the viewers just heard, so only live chat counts.
+    const conn = new TikTokLiveConnection(cfg.username, {
+      signApiKey: cfg.signApiKey || undefined,
+      processInitialData: false,
+    });
+    this.conn = conn;
 
-    this.conn.on(WebcastEvent.CHAT, (ev) => {
+    /**
+     * Joining a room hands over the chat that already scrolled past, and the
+     * socket does it again on every reconnect. Read out loud that is a voice
+     * starting minutes behind the picture, then repeating what the viewers
+     * already heard the moment the connection blinks. Only what was said after
+     * this attempt began counts as live.
+     *
+     * `processInitialData: false` above drops one of the two copies TikTok
+     * sends; the timestamp drops the history itself.
+     */
+    const liveFrom = Date.now() - CLOCK_SLACK_MS;
+
+    // Every handler checks that its own socket is still the one in use. An
+    // attempt that was replaced or stopped is not allowed to speak, report, or
+    // schedule anything on behalf of the run that moved on without it.
+    const current = () => conn === this.conn;
+
+    conn.on(WebcastEvent.CHAT, (ev) => {
+      if (!current()) return;
       const nick = ev?.user?.nickname || ev?.user?.uniqueId || "someone";
       // v3 of the protocol carries the text in `content`; older payloads use `comment`.
       const text = ev?.content ?? ev?.comment ?? "";
+      // A message with no timestamp is passed through: losing live chat is the
+      // worse failure of the two.
+      const said = Number(ev?.common?.createTime ?? ev?.createTime ?? 0);
+      if (said && said < liveFrom) return;
+      if (!this.seen.fresh(String(ev?.common?.msgId ?? ev?.msgId ?? ""))) return;
       if (text) this.onChat(nick, text, ev?.userIdentity ?? {});
     });
-    this.conn.on(WebcastEvent.STREAM_END, () => this.#retry(cfg, { code: "ended" }));
-    this.conn.on(ControlEvent.DISCONNECTED, () => this.#retry(cfg, { code: "dropped" }));
+    conn.on(WebcastEvent.STREAM_END, () => current() && this.#retry(cfg, { code: "ended" }));
+    conn.on(ControlEvent.DISCONNECTED, () => current() && this.#retry(cfg, { code: "dropped" }));
     // A failed handshake reports itself twice, as an event and as a rejection.
     // The rejection carries the better message, so the event stays quiet until
     // the connection is up and its errors are news.
-    this.conn.on("error", (err) => {
-      if (!this.connecting && !this.retryTimer) {
+    conn.on("error", (err) => {
+      if (current() && !this.connecting && !this.retryTimer) {
         this.#status({ state: "error", soft: true, detail: describe(err) });
       }
     });
 
     try {
       this.connecting = true;
-      const state = await this.conn.connect();
+      const state = await conn.connect();
+      // The run may have been stopped or restarted while the handshake was in
+      // flight; the socket it produced belongs to nobody, so it goes.
+      if (!current()) return void this.#drop(conn);
       this.#live({ state: "live", detail: `room ${state.roomId}` });
     } catch (err) {
+      // The attempt is finished either way. Detaching it here is what keeps a
+      // dead socket from delivering chat into the next attempt: every message
+      // it still had would be read out a second time.
+      this.#drop(conn);
+
       // A wrong channel name never starts working on its own; everything else
       // does, so it goes back in the queue instead of stopping the run.
       if (err?.name === "InvalidUniqueIdError") {
@@ -224,11 +294,7 @@ export class StreamServer extends EventEmitter {
   #retry(cfg, { code, arg }) {
     if (!this.running || this.retryTimer) return;
 
-    // Detach before closing: disconnect() fires DISCONNECTED and would land here again.
-    const dead = this.conn;
-    this.conn = null;
-    dead?.removeAllListeners();
-    Promise.resolve(dead?.disconnect()).catch(() => {});
+    this.#drop(this.conn);
 
     this.#status({ state: "waiting", code, arg: arg ?? cfg.username });
 
@@ -236,6 +302,19 @@ export class StreamServer extends EventEmitter {
       this.retryTimer = null;
       if (this.running) this.#connect(cfg).catch(() => {});
     }, RETRY_MS);
+  }
+
+  /**
+   * Retires one connection: listeners first, so the disconnect it triggers has
+   * nothing left to talk to, and so a socket that outlives the call can no
+   * longer feed chat into the run that replaced it.
+   */
+  #drop(conn) {
+    if (!conn) return Promise.resolve();
+    if (conn === this.conn) this.conn = null;
+    conn.removeAllListeners();
+    // Disconnecting a socket that already died is not worth reporting.
+    return Promise.resolve(conn.disconnect()).catch(() => {});
   }
 
   #startMock() {
@@ -274,7 +353,7 @@ export class StreamServer extends EventEmitter {
       this.queue.shift();
       this.dropped++;
     }
-    this.queue.push({ nick, text, phrase });
+    this.queue.push({ nick, text, phrase, lead: verdict.lead, body: verdict.body });
     this.emit("queue", { size: this.queue.length, dropped: this.dropped });
     this.#drain();
   }
@@ -285,7 +364,7 @@ export class StreamServer extends EventEmitter {
     const item = this.queue.shift();
 
     try {
-      const mp3 = await this.speaker.synth(item.phrase);
+      const mp3 = await this.speaker.synth(item.lead ? { lead: item.lead, body: item.body } : item.phrase);
       if (this.speechFailing && this.running) {
         this.speechFailing = false;
         // Only undo our own complaint; a reconnect in progress keeps its status.

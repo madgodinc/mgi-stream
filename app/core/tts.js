@@ -7,7 +7,9 @@ import { MsEdgeTTS } from "msedge-tts";
 // service drops, so speech goes through this small client and the library is
 // only used for the voice list.
 const TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
-const ENDPOINT = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1";
+// Since 2026-10-12 speech.platform.bing.com answers the synthesis socket with
+// a 403; the same service moved here and takes the token under another name.
+const ENDPOINT = "wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1";
 const GEC_VERSION = "1-143.0.3650.96";
 const HEADERS = {
   "User-Agent":
@@ -65,10 +67,82 @@ export function ssml(voice, prosody, text) {
   );
 }
 
+/*
+ * The endpoint accepts exactly the SSML Edge itself sends: one prosody, no
+ * <break> (checked 2026-10-21, anything more gets no answer at all). So a fast
+ * nickname and a pause cannot live in one request. The nickname and the
+ * message go as two requests at once, and the pause is silent mp3 frames
+ * between them. Every clip is the same CBR format, so the parts join as is.
+ *
+ * One frame of FORMAT (MPEG-2 Layer III, 24 kHz, 48 kbit/s, mono) is 576
+ * samples, 24 ms, 144 bytes; a header with zero side info decodes to silence.
+ */
+const FRAME_MS = 24;
+const SILENT_FRAME = Buffer.concat([Buffer.from([0xff, 0xf3, 0x64, 0xc0]), Buffer.alloc(140)]);
+export const silence = (ms) => Buffer.concat(Array(Math.round(Math.max(0, ms) / FRAME_MS)).fill(SILENT_FRAME));
+
+/*
+ * Our own voices (mgi:52.., mgi:57 is Mad) come from the MGI gateway as
+ * 16-bit mono WAV with a bare 44-byte header, synthesized on our server.
+ */
+export const isMgi = (voice) => /^mgi:\d+$/.test(String(voice));
+export const MGI_VOICES = [
+  { id: "mgi:57", locale: "ru-RU", gender: "Male", name: "Мэд" },
+  { id: "mgi:53", locale: "ru-RU", gender: "Male", name: "Артём" },
+  { id: "mgi:56", locale: "ru-RU", gender: "Male", name: "Глеб" },
+  { id: "mgi:52", locale: "ru-RU", gender: "Female", name: "Аня" },
+  { id: "mgi:54", locale: "ru-RU", gender: "Female", name: "Лера" },
+  { id: "mgi:55", locale: "ru-RU", gender: "Female", name: "Вера" },
+];
+const MGI_MS = 15000;
+
+const isWav = (b) => b.length >= 44 && b.toString("latin1", 0, 4) === "RIFF";
+
+function wav(pcm, rate) {
+  const h = Buffer.alloc(44);
+  h.write("RIFF", 0, "latin1");
+  h.writeUInt32LE(36 + pcm.length, 4);
+  h.write("WAVEfmt ", 8, "latin1");
+  h.writeUInt32LE(16, 16);
+  h.writeUInt16LE(1, 20); // PCM
+  h.writeUInt16LE(1, 22); // mono
+  h.writeUInt32LE(rate, 24);
+  h.writeUInt32LE(rate * 2, 28);
+  h.writeUInt16LE(2, 32);
+  h.writeUInt16LE(16, 34);
+  h.write("data", 36, "latin1");
+  h.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([h, pcm]);
+}
+
+/** Nickname clip, a pause, message clip: as samples for WAV, as frames for the Edge mp3. */
+export function join(lead, body, pauseMs) {
+  if (!isWav(lead)) return Buffer.concat([lead, silence(pauseMs), body]);
+  const rate = lead.readUInt32LE(24);
+  const gap = Buffer.alloc(Math.round((rate * Math.max(0, pauseMs)) / 1000) * 2);
+  return wav(Buffer.concat([lead.subarray(44), gap, body.subarray(44)]), rate);
+}
+
+/** Same contract as edgeRequest, against the MGI gateway's /v1/audio/speech. */
+export function mgiRequest({ url, key }) {
+  return async (voice, prosody, text, { timeoutMs = MGI_MS } = {}) => {
+    if (!key) throw new Error("no MGI key for our voices");
+    const res = await fetch(`${url.replace(/\/+$/, "")}/audio/speech`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      // The Edge rate string the Speaker builds ("+48%") is the speed here too.
+      body: JSON.stringify({ voice, input: text, response_format: "wav", speed: 1 + parseFloat(prosody.rate) / 100 }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) throw new Error(`MGI voice ${res.status}: ${(await res.text()).slice(0, 120)}`);
+    return Buffer.from(await res.arrayBuffer());
+  };
+}
+
 /** One request on its own socket. Resolves with the mp3, rejects on any early close. */
 export function edgeRequest(voice, prosody, text, { timeoutMs = ATTEMPT_MS, Socket = WebSocket } = {}) {
   return new Promise((resolve, reject) => {
-    const url = `${ENDPOINT}?TrustedClientToken=${TOKEN}&Sec-MS-GEC=${gec()}&Sec-MS-GEC-Version=${GEC_VERSION}&ConnectionId=${hex(16)}`;
+    const url = `${ENDPOINT}?Ocp-Apim-Subscription-Key=${TOKEN}&Sec-MS-GEC=${gec()}&Sec-MS-GEC-Version=${GEC_VERSION}&ConnectionId=${hex(16)}`;
     const ws = new Socket(url, { headers: HEADERS });
     const chunks = [];
     let settled = false;
@@ -114,20 +188,29 @@ export function edgeRequest(voice, prosody, text, { timeoutMs = ATTEMPT_MS, Sock
 }
 
 /**
- * Turns phrases into mp3 with one voice. Each attempt gets a fresh socket. A
+ * Turns phrases into audio with one voice (mp3 from Edge, WAV from our
+ * gateway). Each attempt gets a fresh request. A
  * phrase its own voice cannot say goes to the fallback voice; one that fails
  * there too throws, and the caller skips it.
  */
 export class Speaker {
   constructor(
-    { voice, rate, pitch },
-    { request = edgeRequest, attempts = ATTEMPTS, fallback = fallbackFor(voice), fallbackAttempts = FALLBACK_ATTEMPTS } = {},
+    { voice, rate, pitch, nickRate = 0, nickPause = 0, mgiUrl = "", mgiKey = "" },
+    { request, attempts = ATTEMPTS, fallback = fallbackFor(voice), fallbackAttempts = FALLBACK_ATTEMPTS } = {},
   ) {
+    // Our voices go to the gateway, Edge ones (and the Edge fallback) to Edge.
+    // A test passes one request for everything.
+    const mgi = mgiRequest({ url: mgiUrl, key: mgiKey });
+    request ??= (v, ...rest) => (isMgi(v) ? mgi : edgeRequest)(v, ...rest);
     this.voice = voice;
     // The API wants signed SSML units, the UI stores plain numbers.
+    const signed = (n, unit) => `${n >= 0 ? "+" : ""}${n}${unit}`;
     this.prosody = {
-      rate: `${rate >= 0 ? "+" : ""}${rate}%`,
-      pitch: `${pitch >= 0 ? "+" : ""}${pitch}Hz`,
+      rate: signed(rate, "%"),
+      pitch: signed(pitch, "Hz"),
+      // The nickname speed is on top of the voice speed, not instead of it.
+      leadRate: signed(rate + nickRate, "%"),
+      pause: Math.max(0, nickPause),
     };
     this.request = request;
     this.attempts = attempts;
@@ -138,11 +221,26 @@ export class Speaker {
     this.stats = { ok: 0, failed: 0, retries: 0, fallback: 0 };
   }
 
+  /**
+   * A phrase is plain text or { lead, body }: the nickname part and the
+   * message. The nickname is said faster with a beat after it, which replaces
+   * a spoken "{nick} пишет." that took longer than many messages it introduced.
+   */
+  async #say(voice, text) {
+    if (typeof text === "string" || !text.lead) return this.request(voice, this.prosody, text?.body ?? text);
+    const fast = { ...this.prosody, rate: this.prosody.leadRate };
+    const [lead, body] = await Promise.all([
+      this.request(voice, fast, text.lead),
+      this.request(voice, this.prosody, text.body),
+    ]);
+    return join(lead, body, this.prosody.pause);
+  }
+
   async #try(voice, text, attempts) {
     let last = null;
     for (let i = 0; i < attempts; i++) {
       try {
-        return await this.request(voice, this.prosody, text);
+        return await this.#say(voice, text);
       } catch (err) {
         last = err;
         this.stats.retries++;
@@ -197,5 +295,7 @@ export async function listVoices() {
   voiceCache = voices
     .map((v) => ({ id: v.ShortName, locale: v.Locale, gender: v.Gender, name: v.FriendlyName }))
     .sort((a, b) => a.locale.localeCompare(b.locale) || a.id.localeCompare(b.id));
+  // Ours first: they are the reason to open the list.
+  voiceCache = [...MGI_VOICES, ...voiceCache];
   return voiceCache;
 }

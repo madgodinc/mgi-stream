@@ -77,7 +77,10 @@ ipcMain.handle("config:save", (_e, cfg) => {
 
 ipcMain.handle("voices:list", async () => {
   try {
-    return { ok: true, voices: await listVoices() };
+    // Our voices need an MGI key; without one they would only ever fall back.
+    const keyed = Boolean(config.load(configDir).mgiKey);
+    const voices = (await listVoices()).filter((v) => keyed || !v.id.startsWith("mgi:"));
+    return { ok: true, voices };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -85,7 +88,10 @@ ipcMain.handle("voices:list", async () => {
 
 ipcMain.handle("tts:preview", async (_e, cfg) => {
   try {
-    const mp3 = await new Speaker(cfg).synth("Проверка голоса. Chat, one two three.");
+    // With the nickname on, the sample carries one, so its speed and pause can be heard too.
+    const body = "Проверка голоса. Chat, one two three.";
+    const lead = cfg.sayNickname ? (cfg.nicknameTemplate || "{nick}").replace("{nick}", "Катя").trim() : "";
+    const mp3 = await new Speaker(cfg).synth(lead ? { lead, body } : body);
     return { ok: true, audio: mp3.toString("base64") };
   } catch (err) {
     return { ok: false, error: err.message };

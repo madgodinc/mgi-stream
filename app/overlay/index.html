@@ -60,6 +60,8 @@
 <div id="unlock">click to enable sound</div>
 
 <script>
+// Edge voices send mp3, our gateway voices WAV (base64 of "RIFF" starts "UklGR").
+const dataUrl = (b64) => `data:audio/${b64.startsWith("UklGR") ? "wav" : "mpeg"};base64,${b64}`;
 const audio = new Audio();
 const pending = [];
 let playing = false;
@@ -78,7 +80,7 @@ function row(nick, text) {
 function play(item) {
   playing = true;
   const el = row(item.nick, item.text);
-  audio.src = "data:audio/mpeg;base64," + item.audio;
+  audio.src = dataUrl(item.audio);
 
   audio.ontimeupdate = () => {
     if (audio.duration) el.style.setProperty("--fill", (audio.currentTime / audio.duration) * 100 + "%");

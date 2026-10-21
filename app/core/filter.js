@@ -41,9 +41,9 @@ export function decide(cfg, { nick, text, identity }) {
   if (cfg.skipLinks && LINK.test(body)) return { speak: false, reason: "link" };
 
   if (body.length > cfg.maxChars) body = body.slice(0, cfg.maxChars) + "…";
-  const phrase = cfg.sayNickname
-    ? cfg.nicknameTemplate.replace("{nick}", nick) + " " + body
-    : body;
+  // The nickname part travels separately so speech can hurry it and pause after it.
+  const lead = cfg.sayNickname ? cfg.nicknameTemplate.replace("{nick}", nick).trim() : "";
+  const phrase = lead ? lead + " " + body : body;
 
-  return { speak: true, phrase };
+  return { speak: true, phrase, lead, body };
 }

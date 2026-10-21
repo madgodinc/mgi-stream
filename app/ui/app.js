@@ -8,6 +8,8 @@ const SLIDERS = {
   pitch: (v) => `${v >= 0 ? "+" : ""}${v}Hz`,
   maxChars: (v) => String(v),
   maxQueue: (v) => String(v),
+  nickRate: (v) => `${v >= 0 ? "+" : ""}${v}%`,
+  nickPause: (v) => `${v} ms`,
 };
 
 let cfg = null;
@@ -136,6 +138,8 @@ for (const b of $("lang").children) {
 const flow = $("flow");
 const pending = [];
 let playing = false;
+// Edge voices send mp3, our gateway voices WAV (base64 of "RIFF" starts "UklGR").
+const dataUrl = (b64) => `data:audio/${b64.startsWith("UklGR") ? "wav" : "mpeg"};base64,${b64}`;
 const audio = new Audio();
 
 function label(el) {
@@ -182,7 +186,7 @@ function playNext() {
   if (!cfg.playInApp) return finish(); // the overlay is doing the talking
 
   playing = true;
-  audio.src = "data:audio/mpeg;base64," + item.audio;
+  audio.src = dataUrl(item.audio);
   audio.ontimeupdate = () => {
     if (audio.duration) el.style.setProperty("--fill", (audio.currentTime / audio.duration) * 100 + "%");
   };
@@ -239,7 +243,7 @@ $("test").onclick = async () => {
   $("test").disabled = false;
   $("test").textContent = tr("testVoice");
   if (!res.ok) return showStatus({ state: "error", code: "speech", arg: res.error });
-  new Audio("data:audio/mpeg;base64," + res.audio).play();
+  new Audio(dataUrl(res.audio)).play();
 };
 
 // ── wiring ────────────────────────────────────────────────────────────────────
@@ -344,9 +348,16 @@ window.mgi.on("speak", (item) => {
     return showStatus({ state: "error", detail: res.error });
   }
   select.innerHTML = res.voices
-    .map((v) => `<option value="${v.id}">${v.locale} · ${v.id.replace(/^[a-z]{2}-[A-Z]{2}-/, "")} · ${v.gender}</option>`)
+    .map((v) =>
+      v.id.startsWith("mgi:")
+        ? `<option value="${v.id}">MGI · ${v.name}</option>`
+        : `<option value="${v.id}">${v.locale} · ${v.id.replace(/^[a-z]{2}-[A-Z]{2}-/, "")} · ${v.gender}</option>`,
+    )
     .join("");
   select.value = cfg.voice;
+  // A preset for a voice this install cannot use (ours, without a key) is hidden.
+  const have = new Set(res.voices.map((v) => v.id));
+  for (const b of $("presets").children) b.style.display = have.has(b.dataset.voice) ? "" : "none";
   markPreset();
 
   if (location.search.includes("demo")) go(true);

@@ -21,7 +21,7 @@ Cloning this repository is for changing the app, not for running it. That path d
 ## Use it
 
 1. Type the channel name. `@yourname`, `yourname`, or a pasted `tiktok.com/@yourname/live` link all work. This is the account whose live chat gets read.
-2. Pick a voice, set speed and pitch, hit **test voice**. Four presets cover the common cases (Russian and English, male and female); the dropdown below them holds every voice Edge offers.
+2. Pick a voice, set speed and pitch, hit **test voice**. Four presets cover the common cases (Russian and English, male and female); the dropdown below them holds every voice Edge offers. Under **Reading**, the nickname can be read faster than the message, with a short pause after it, so a busy chat does not spend half its airtime on names.
 3. Press **go on air**. Speech comes out of the app window right away, so you can hear it working before OBS is involved.
 4. For the stream itself, in OBS add **Source → Browser**, paste the URL from the bottom bar (`http://localhost:8099`), size it 900x600.
 
@@ -76,7 +76,7 @@ TikTok has no official realtime chat API. This uses [`tiktok-live-connector`](ht
 
 Joining a room is signed through EulerStream, whose free tier is rate limited per address. If connecting starts failing with a signature limit, put a free key in the **EulerStream key** field in settings. Most people never need to.
 
-Speech comes from the public endpoint behind Edge Read Aloud. It costs nothing and needs no key, but it is an internet round trip per phrase and Microsoft can change it. Russian ships two voices, `ru-RU-DmitryNeural` and `ru-RU-SvetlanaNeural`; other languages have more. Moving to a local engine such as Piper or Silero means replacing `app/core/tts.js` alone, since the rest of the app only handles mp3 buffers.
+Speech comes from the public endpoint behind Edge Read Aloud. It costs nothing and needs no key, but it is an internet round trip per phrase and Microsoft can change it. Russian ships two voices, `ru-RU-DmitryNeural` and `ru-RU-SvetlanaNeural`; other languages have more. Since 2026-10-12 the endpoint lives at `api.msedgeservices.com`; builds before 0.3.0 get a 403 from the old address. `app/core/tts.js` also speaks with the MGI voices served by madgodinc.net, which need an MGI key and stay hidden without one. Another engine means changing that file alone: the rest of the app only passes audio buffers around.
 
 Chat only. Gifts, follows, likes, alerts, and overlays are out of scope.
 

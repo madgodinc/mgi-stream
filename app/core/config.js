@@ -10,7 +10,9 @@ export const DEFAULTS = {
   port: 8099,
 
   sayNickname: true,
-  nicknameTemplate: "{nick} пишет.",
+  nicknameTemplate: "{nick}",
+  nickRate: 40, // percent on top of `rate`, so the name goes by quickly
+  nickPause: 300, // ms of silence between the name and the message
   maxChars: 180,
   minChars: 2,
   maxQueue: 12,
@@ -28,16 +30,26 @@ export const DEFAULTS = {
   // otherwise the app looks broken.
   playInApp: true,
   signApiKey: "",
+
+  // Our own voices (mgi:52.., mgi:57 is Mad) are synthesized by the MGI gateway.
+  mgiUrl: "https://madgodinc.net/ai/v1",
+  mgiKey: "",
 };
 
 /**
  * The connector wants a bare uniqueId, but people paste what they have: `@ник`,
  * a profile link, the /live URL, a trailing space from the phone keyboard.
+ *
+ * Lowercase matters more than it looks. A uniqueId is lowercase on TikTok's
+ * side, but the profile page shows it capitalised the way its owner typed it,
+ * so that is what gets retyped here. Room lookup then misses on every source
+ * and reports "Failed to retrieve Room ID from all sources", which reads as a
+ * broken app rather than as one wrong letter.
  */
 export function normalizeUsername(raw) {
   const input = String(raw ?? "").trim();
   const fromLink = input.match(/tiktok\.com\/@([^/?#\s]+)/i);
-  return (fromLink ? fromLink[1] : input.replace(/^@+/, "")).split(/[/?#\s]/)[0];
+  return (fromLink ? fromLink[1] : input.replace(/^@+/, "")).split(/[/?#\s]/)[0].toLowerCase();
 }
 
 export function load(dir) {

@@ -72,5 +72,9 @@ test("refusals carry a code the UI can translate, not a sentence", () => {
 
 test("the nickname template is applied", () => {
   const cfg = { sayNickname: true, nicknameTemplate: "{nick} says." };
-  assert.equal(run(cfg, msg("Катя", "привет")).phrase, "Катя says. привет");
+  const v = run(cfg, msg("Катя", "привет"));
+  assert.equal(v.phrase, "Катя says. привет");
+  assert.equal(v.lead, "Катя says.", "the nickname part travels apart for speech");
+  assert.equal(v.body, "привет");
+  assert.equal(run({ sayNickname: false }, msg("Катя", "привет")).lead, "");
 });

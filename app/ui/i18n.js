@@ -23,6 +23,7 @@ const RU = {
   chatTitle: "Чат",
 
   voice: "Голос",
+  madVoice: "мэд",
   ruMale: "рус м",
   ruFemale: "рус ж",
   enMale: "анг м",
@@ -46,7 +47,9 @@ const RU = {
 
   reading: "Чтение",
   sayNickname: "Называть ник",
-  nickTemplate: "{nick} пишет.",
+  nickTemplate: "{nick}",
+  nickRate: "Ник быстрее на",
+  nickPause: "Пауза после ника",
   skipEmoji: "Пропускать сообщения из одних эмодзи",
   skipLinks: "Пропускать сообщения со ссылками",
   playInApp: "Дублировать звук в этом окне",
@@ -116,6 +119,7 @@ const EN = {
   chatTitle: "Chat",
 
   voice: "Voice",
+  madVoice: "mad",
   ruMale: "ru male",
   ruFemale: "ru female",
   enMale: "en male",
@@ -139,7 +143,9 @@ const EN = {
 
   reading: "Reading",
   sayNickname: "Say the nickname",
-  nickTemplate: "{nick} says.",
+  nickTemplate: "{nick}",
+  nickRate: "Nickname faster by",
+  nickPause: "Pause after nickname",
   skipEmoji: "Skip emoji-only messages",
   skipLinks: "Skip messages with links",
   playInApp: "Play sound in this window too",
