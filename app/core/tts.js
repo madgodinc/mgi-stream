@@ -123,9 +123,47 @@ export function join(lead, body, pauseMs) {
   return wav(Buffer.concat([lead.subarray(44), gap, body.subarray(44)]), rate);
 }
 
+/*
+ * Mad's voice (mgi:57) is also part of the MGI subscription: with no gateway
+ * key, a signed-in account gets it from the MGI voice server, which asks the
+ * gateway for it. Same WAV comes back, at the gateway's own sample rate.
+ */
+export const SUB_VOICES = { "mgi:57": "mad" };
+export const VOICE_SERVER = "https://madgodinc.net/stream/api/tts";
+let subscription = () => null;
+
+/** `token()` gives the device token while the subscription is live, else null. */
+export function useSubscription(token) {
+  subscription = token;
+}
+
+export const hasSubscriptionVoice = () => Boolean(subscription());
+
+/** The Edge rate string as one of the voice server's five speeds. */
+export function rateStep(rate) {
+  const speed = 1 + parseFloat(rate) / 100;
+  return speed < 0.82 ? "x-slow" : speed < 0.94 ? "slow" : speed < 1.08 ? "medium" : speed < 1.22 ? "fast" : "x-fast";
+}
+
+function subscriptionRequest(token) {
+  return async (voice, prosody, text, { timeoutMs = MGI_MS } = {}) => {
+    const res = await fetch(VOICE_SERVER, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "X-MGI-Product": "tiktok" },
+      body: JSON.stringify({ text, speaker: SUB_VOICES[voice], rate: rateStep(prosody.rate), format: "wav" }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) throw new Error(`MGI voice ${res.status}: ${(await res.text()).slice(0, 120)}`);
+    return Buffer.from(await res.arrayBuffer());
+  };
+}
+
 /** Same contract as edgeRequest, against the MGI gateway's /v1/audio/speech. */
 export function mgiRequest({ url, key }) {
-  return async (voice, prosody, text, { timeoutMs = MGI_MS } = {}) => {
+  return async (voice, prosody, text, opts = {}) => {
+    const token = !key && SUB_VOICES[voice] ? subscription() : null;
+    if (token) return subscriptionRequest(token)(voice, prosody, text, opts);
+    const { timeoutMs = MGI_MS } = opts;
     if (!key) throw new Error("no MGI key for our voices");
     const res = await fetch(`${url.replace(/\/+$/, "")}/audio/speech`, {
       method: "POST",

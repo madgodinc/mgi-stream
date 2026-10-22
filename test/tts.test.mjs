@@ -112,3 +112,29 @@ test("WAV parts join as samples with a silent gap", () => {
   assert.equal(out.readUInt32LE(40), (10 + 2205 + 20) * 2);
   assert.equal(out.length, 44 + (10 + 2205 + 20) * 2);
 });
+
+test("Mad's voice goes through the subscription when there is no gateway key", async () => {
+  const { mgiRequest, useSubscription, rateStep } = await import("../app/core/tts.js");
+  assert.equal(rateStep("+0%"), "medium");
+  assert.equal(rateStep("+40%"), "x-fast");
+  assert.equal(rateStep("-20%"), "x-slow");
+  const seen = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    seen.push({ url, init });
+    return new Response(Buffer.from("RIFF"), { status: 200 });
+  };
+  try {
+    useSubscription(() => "device-token");
+    await mgiRequest({ url: "https://gw/ai/v1", key: "" })("mgi:57", { rate: "+10%" }, "привет");
+    assert.match(seen[0].url, /stream\/api\/tts$/);
+    assert.equal(seen[0].init.headers["X-MGI-Product"], "tiktok");
+    assert.deepEqual(JSON.parse(seen[0].init.body), { text: "привет", speaker: "mad", rate: "fast", format: "wav" });
+    await assert.rejects(mgiRequest({ url: "https://gw/ai/v1", key: "" })("mgi:52", { rate: "+0%" }, "x"), /no MGI key/);
+    useSubscription(() => null);
+    await assert.rejects(mgiRequest({ url: "https://gw/ai/v1", key: "" })("mgi:57", { rate: "+0%" }, "x"), /no MGI key/);
+  } finally {
+    globalThis.fetch = real;
+    useSubscription(() => null);
+  }
+});

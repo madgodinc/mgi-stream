@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { MUSIC_DEFAULTS } from "./music.js";
 
 export const DEFAULTS = {
   lang: "ru",
@@ -29,12 +30,20 @@ export const DEFAULTS = {
   // On by default: a first run with no OBS set up should still make a sound,
   // otherwise the app looks broken.
   playInApp: true,
+  // Closing the window hides it to the tray; the run goes on.
+  trayOnClose: true,
   signApiKey: "",
 
   // Our own voices (mgi:52.., mgi:57 is Mad) are synthesized by the MGI gateway.
   mgiUrl: "https://madgodinc.net/ai/v1",
   mgiKey: "",
+
+  // Music requests from the chat (core/music.js), kept as one group.
+  music: MUSIC_DEFAULTS,
 };
+
+/** The music group merges key by key, so a newer version's new setting gets its default. */
+const withMusic = (cfg) => ({ ...cfg, music: { ...MUSIC_DEFAULTS, ...(cfg.music ?? {}) } });
 
 /**
  * The connector wants a bare uniqueId, but people paste what they have: `@ник`,
@@ -56,7 +65,7 @@ export function load(dir) {
   const file = path.join(dir, "config.json");
   if (!fs.existsSync(file)) return { ...DEFAULTS };
   try {
-    return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(file, "utf8")) };
+    return withMusic({ ...DEFAULTS, ...JSON.parse(fs.readFileSync(file, "utf8")) });
   } catch {
     // A hand-edited file with a stray comma should not stop the app from starting.
     return { ...DEFAULTS };
@@ -68,6 +77,7 @@ export function save(dir, cfg) {
   const clean = {};
   for (const key of Object.keys(DEFAULTS)) clean[key] = cfg?.[key] ?? DEFAULTS[key];
   clean.username = normalizeUsername(clean.username);
+  clean.music = withMusic(clean).music;
   fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify(clean, null, 2));
   return clean;
 }

@@ -2,9 +2,9 @@ const EMOJI_ONLY = /^[\p{Extended_Pictographic}\p{Emoji_Component}\s]+$/u;
 const LINK = /(https?:\/\/|www\.|\.(com|ru|net|org|io|me)\b)/i;
 
 /** Audience tiers, widest first. A viewer passes if their rank reaches the setting. */
-const RANK = { everyone: 0, followers: 1, subscribers: 2, moderators: 3 };
+export const RANK = { everyone: 0, followers: 1, subscribers: 2, moderators: 3 };
 
-function rankOf(identity = {}) {
+export function rankOf(identity = {}) {
   if (identity.isModeratorOfAnchor || identity.isAnchor) return RANK.moderators;
   if (identity.isSubscriberOfAnchor) return RANK.subscribers;
   if (identity.isFollowerOfAnchor || identity.isMutualFollowingWithAnchor) return RANK.followers;
@@ -12,6 +12,19 @@ function rankOf(identity = {}) {
 }
 
 const listed = (list, nick) => list.some((u) => u.trim().toLowerCase() === nick.toLowerCase());
+
+/**
+ * The nickname as it is read out: without digits ("kate_1998" -> "kate"),
+ * since a voice spelling "одна тысяча девятьсот девяносто восемь" before
+ * every message is the loudest noise in a TikTok chat. Separators left
+ * dangling by the cut become spaces.
+ */
+export function spokenNick(nick) {
+  return String(nick ?? "")
+    .replace(/\p{Nd}+/gu, " ")
+    .replace(/[_.\-\s]+/g, " ")
+    .trim();
+}
 
 /**
  * Decides what to do with one chat message.
@@ -42,7 +55,9 @@ export function decide(cfg, { nick, text, identity }) {
 
   if (body.length > cfg.maxChars) body = body.slice(0, cfg.maxChars) + "…";
   // The nickname part travels separately so speech can hurry it and pause after it.
-  const lead = cfg.sayNickname ? cfg.nicknameTemplate.replace("{nick}", nick).trim() : "";
+  // A nickname with nothing left once its digits go is not said at all.
+  const said = spokenNick(nick);
+  const lead = cfg.sayNickname && said ? cfg.nicknameTemplate.replace("{nick}", said).trim() : "";
   const phrase = lead ? lead + " " + body : body;
 
   return { speak: true, phrase, lead, body };

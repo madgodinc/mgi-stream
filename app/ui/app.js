@@ -1,8 +1,18 @@
 import { setLang, tr, apply } from "./i18n.js";
+import { initMusic, relabel as relabelMusic, setUrl as setMusicUrl, duck } from "./music.js";
+import { initUpdates, relabel as relabelUpdates } from "./updates.js";
+import { askTheme, initTheme, mountThemeButton, mountThemePicker } from "./themes/theme.js";
+
+// The theme goes on before anything is drawn, so the window never flashes studio.
+const themeReady = initTheme({
+  load: () => window.mgi.theme.get(),
+  save: (id) => window.mgi.theme.set(id),
+  subscribe: (fn) => window.mgi.on("theme", fn),
+});
 
 const $ = (id) => document.getElementById(id);
 
-const CHECKS = ["sayNickname", "skipEmojiOnly", "skipLinks", "playInApp", "requirePrefix"];
+const CHECKS = ["sayNickname", "skipEmojiOnly", "skipLinks", "playInApp", "requirePrefix", "trayOnClose"];
 const SLIDERS = {
   rate: (v) => `${v >= 0 ? "+" : ""}${v}%`,
   pitch: (v) => `${v >= 0 ? "+" : ""}${v}Hz`,
@@ -42,7 +52,7 @@ addEventListener("blur", away);
 document.addEventListener("visibilitychange", away);
 away();
 
-const TABS = ["voice", "who", "reading", "obs"];
+const TABS = ["voice", "who", "reading", "music", "obs"];
 let tab = "voice";
 function setTab(next) {
   const from = TABS.indexOf(tab);
@@ -122,7 +132,17 @@ function relabel() {
   $("queue").textContent = `${tr("queue")} 0`;
   if ($("nicknameTemplate").value.trim() === "") $("nicknameTemplate").value = tr("nickTemplate");
   for (const el of flow.querySelectorAll(".line")) label(el);
+  document.documentElement.lang = cfg.lang;
+  relabelMusic();
+  relabelUpdates();
+  // In the fog rail a tab is only its icon: the label goes to the tooltip.
+  for (const b of document.querySelectorAll(".tab")) b.title = b.textContent.trim();
+  picker?.redraw();
+  themeBtn?.redraw();
 }
+
+let picker = null;
+let themeBtn = null;
 
 for (const b of $("lang").children) {
   b.onclick = () => {
@@ -179,6 +199,7 @@ function playNext() {
     el.classList.remove("live");
     el.classList.add("done");
     playing = false;
+    duck(false);
     playNext();
   };
 
@@ -186,6 +207,7 @@ function playNext() {
   if (!cfg.playInApp) return finish(); // the overlay is doing the talking
 
   playing = true;
+  duck(true);
   audio.src = dataUrl(item.audio);
   audio.ontimeupdate = () => {
     if (audio.duration) el.style.setProperty("--fill", (audio.currentTime / audio.duration) * 100 + "%");
@@ -211,6 +233,7 @@ function setAir(on) {
   $("channel").disabled = on;
   $("port").disabled = on;
   if (!on) $("url").textContent = tr("notRunning");
+  if (!on) setMusicUrl("");
 }
 
 async function go(mock) {
@@ -229,6 +252,7 @@ async function go(mock) {
   // The channel is cleaned up on save, so show back what actually got connected.
   if (res.username) $("channel").value = cfg.username = res.username;
   $("url").textContent = res.url;
+  setMusicUrl(res.musicUrl);
 }
 
 $("air").onclick = () => go(false);
@@ -332,15 +356,7 @@ window.mgi.on("speak", (item) => {
   playNext();
 });
 
-// ── boot ──────────────────────────────────────────────────────────────────────
-
-(async () => {
-  cfg = await window.mgi.getConfig();
-  cfg.lang = setLang(cfg.lang);
-  paint();
-  relabel();
-  setAir(false);
-
+async function loadVoices() {
   const res = await window.mgi.voices();
   const select = $("voice");
   if (!res.ok) {
@@ -359,6 +375,33 @@ window.mgi.on("speak", (item) => {
   const have = new Set(res.voices.map((v) => v.id));
   for (const b of $("presets").children) b.style.display = have.has(b.dataset.voice) ? "" : "none";
   markPreset();
+}
+
+// ── boot ──────────────────────────────────────────────────────────────────────
+
+(async () => {
+  cfg = await window.mgi.getConfig();
+  cfg.lang = setLang(cfg.lang);
+  paint();
+  await themeReady;
+  picker = mountThemePicker($("themePick"), { lang: () => cfg.lang });
+  themeBtn = mountThemeButton($("theme-btn"), { lang: () => cfg.lang });
+  await initMusic({ cfg, touched });
+  initUpdates();
+  relabel();
+  setAir(false);
+
+  // The voice list waits on the account (a few seconds); the window does not.
+  const voices = loadVoices();
+  // First start: the theme question, over the window it re-dresses.
+  if (!(await themeReady).asked) await askTheme({ lang: () => cfg.lang });
+  await voices;
+  // Mad's voice comes with the subscription: the list changes with it.
+  let subscribed = null;
+  window.mgi.on("account", (a) => {
+    if (a.ok !== subscribed) loadVoices();
+    subscribed = a.ok;
+  });
 
   if (location.search.includes("demo")) go(true);
 })();

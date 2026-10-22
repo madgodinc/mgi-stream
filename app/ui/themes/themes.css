@@ -1,0 +1,223 @@
+/* The MGI themes (docs/themes.md). `studio` is the MGI Studio look each app
+   already draws and changes nothing here. The others re-dress the same
+   markup through the tokens every app shares (--ground, --glass, --ink,
+   --line, --c1..3, --display, --text, --mono, --r) plus the shell classes
+   every app has (.bar, .brand, .tabs/.tab/.tabs__pill, .sky, .btn--go,
+   .btn--soft, .panel). An app adds its own per-theme rules for whatever is
+   only its own, in its `themes.css`, after this file.
+
+   Ids: silence (A, light, hairlines), night (B, black + lime, capsule menu),
+   fog (C, slate glass, icon rail), amber (D, warm graphite, text menu).
+
+   [data-theme] twice raises the specificity over an app's per-tab palettes
+   (:root[data-tab="…"]), which would otherwise win by coming later. */
+
+@import url("theme-fonts.css");
+
+/* ── tokens ───────────────────────────────────────────────── */
+
+:root[data-theme="silence"][data-theme] {
+  --ground: #f2f0eb; --glass: #f2f0eb; --glass-hi: #e9e6df; --well: #e9e6df;
+  --line: #d3cfc6; --line-hi: #111111; --ink: #111111; --dim: #5f5c56; --faint: #8a867e;
+  --ok: #1f8a3b; --bad: #e8321a; --wait: #b07a00;
+  --c1: #e8321a; --c2: #e8321a; --c3: #111111; --on-acc: #ffffff;
+  --r: 0px; --r-sm: 0px; --r-btn: 0px;
+  --display: 'Inter Tight', sans-serif; --text: 'Inter Tight', sans-serif; --mono: 'JetBrains Mono', monospace;
+  --shadow: none; --blur: none; --nav-side: 200px;
+  color-scheme: light;
+}
+:root[data-theme="night"][data-theme] {
+  --ground: #0b0b0c; --glass: #111113; --glass-hi: #17171a; --well: #17171a;
+  --line: #232325; --line-hi: #3a3a3e; --ink: #ededed; --dim: #8d8d8d; --faint: #5c5c60;
+  --ok: #3ddc84; --bad: #ff5a3c; --wait: #ffc23d;
+  --c1: #c6ff3d; --c2: #c6ff3d; --c3: #7cc4ff; --on-acc: #0b0b0c;
+  --r: 22px; --r-sm: 14px; --r-btn: 999px;
+  --display: 'Onest', sans-serif; --text: 'Onest', sans-serif; --mono: 'IBM Plex Mono', monospace;
+  --shadow: none; --blur: none; --nav-side: 0px;
+  color-scheme: dark;
+}
+:root[data-theme="fog"][data-theme] {
+  --ground: #14161a; --glass: rgba(30, 33, 40, .62); --glass-hi: rgba(40, 44, 54, .72); --well: rgba(10, 12, 16, .5);
+  --line: rgba(255, 255, 255, .08); --line-hi: rgba(255, 255, 255, .16); --ink: #e9ecf2; --dim: #8a91a1; --faint: #5d6577;
+  --ok: #22c1a9; --bad: #ff7a59; --wait: #ffc56b;
+  --c1: #3d7bff; --c2: #38d6c4; --c3: #9db8ff; --on-acc: #ffffff;
+  --r: 26px; --r-sm: 14px; --r-btn: 999px;
+  --display: 'Geist', sans-serif; --text: 'Geist', sans-serif; --mono: 'Geist Mono', monospace;
+  --shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 20px 50px rgba(0, 0, 0, .35); --blur: blur(24px); --nav-side: 76px;
+  color-scheme: dark;
+}
+:root[data-theme="amber"][data-theme] {
+  --ground: #1a1714; --glass: #1a1714; --glass-hi: #241f1a; --well: #241f1a;
+  --line: #3a332b; --line-hi: #5a4f42; --ink: #efe6d8; --dim: #948a7b; --faint: #6b6256;
+  --ok: #ffb000; --bad: #ff6b3d; --wait: #ffd27a;
+  --c1: #ffb000; --c2: #ffb000; --c3: #ff6b3d; --on-acc: #1a1714;
+  --r: 0px; --r-sm: 0px; --r-btn: 0px;
+  --display: 'Literata', serif; --text: 'Martian Mono', monospace; --mono: 'Martian Mono', monospace;
+  --shadow: none; --blur: none; --nav-side: 0px;
+  color-scheme: dark;
+}
+
+/* ── shared dressing for every new theme ──────────────────── */
+
+:root[data-theme]:not([data-theme="studio"]) body { background: var(--ground); color: var(--ink); font-family: var(--text); }
+:root[data-theme]:not([data-theme="studio"]) .sky { display: none; }
+:root[data-theme]:not([data-theme="studio"]) .brand__mgi {
+  background: none; -webkit-background-clip: border-box; background-clip: border-box; color: var(--ink);
+  animation: none; filter: none;
+}
+:root[data-theme]:not([data-theme="studio"]) .brand__word { color: var(--dim); }
+
+/* Buttons: one flat accent, no shine, no sinking lip. */
+:root[data-theme]:not([data-theme="studio"]) :is(.btn--go, .primary) {
+  background: var(--c1); color: var(--on-acc); border: 0; border-radius: var(--r-btn);
+  box-shadow: none; animation: none; text-shadow: none;
+}
+:root[data-theme]:not([data-theme="studio"]) :is(.btn--go, .primary)::before { display: none; }
+:root[data-theme]:not([data-theme="studio"]) :is(.btn--go, .primary):active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
+:root[data-theme]:not([data-theme="studio"]) :is(.btn--soft, .secondary) {
+  background: transparent; color: var(--ink); border: 1px solid var(--line-hi); border-radius: var(--r-btn); box-shadow: none;
+}
+:root[data-theme]:not([data-theme="studio"]) :is(.btn--soft, .secondary):active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
+
+/* Panels: the theme's surface instead of glowing glass. */
+:root[data-theme]:not([data-theme="studio"]) :is(.panel, .section, .feed, .feed-panel, .deck) {
+  background: var(--glass); border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: var(--shadow); backdrop-filter: var(--blur);
+}
+
+/* The content below the title bar makes room for a side menu. Apps give
+   that container the class `mgi-body` (docs/themes.md). */
+:root[data-theme]:not([data-theme="studio"]) .mgi-body { margin-left: var(--nav-side); transition: margin-left .4s cubic-bezier(.16, 1, .3, 1); }
+
+/* Tab icons exist for the fog rail only (each app puts an inline SVG with
+   class `tab__icon` inside every .tab). */
+.tab__icon { display: none; }
+
+/* ── silence: a hairline side menu ─────────────────────────── */
+
+:root[data-theme="silence"] .tabs {
+  position: fixed; left: 0; top: var(--bar-h, 64px); bottom: 0; width: var(--nav-side); z-index: 4;
+  display: flex; flex-direction: column; justify-content: flex-start; gap: 0; padding: 18px 0;
+  background: var(--ground); border: 0; border-right: 1px solid var(--line-hi); border-radius: 0;
+  box-shadow: none; backdrop-filter: none;
+}
+:root[data-theme="silence"] .tabs__pill { display: none; }
+:root[data-theme="silence"] .tab {
+  text-align: left; padding: 12px 24px; border-radius: 0; color: var(--ink); text-shadow: none;
+  font: 500 15px/1.2 var(--text); text-transform: none; letter-spacing: 0;
+}
+:root[data-theme="silence"] .tab.is-on { background: var(--ink); color: var(--ground); }
+:root[data-theme="silence"] .tab:not(.is-on):hover { background: var(--glass-hi); color: var(--ink); }
+:root[data-theme="silence"] :is(.panel, .section, .feed, .feed-panel, .deck) { border-color: var(--line-hi); }
+
+/* ── night: a capsule on top, the selected tab in ink ──────── */
+
+:root[data-theme="night"] .tabs { background: var(--well); border: 0; box-shadow: none; backdrop-filter: none; }
+:root[data-theme="night"] .tabs__pill { background: var(--ink); box-shadow: none; }
+:root[data-theme="night"] .tab { font: 500 13px/1 var(--text); text-transform: lowercase; letter-spacing: 0; color: var(--dim); text-shadow: none; }
+:root[data-theme="night"] .tab.is-on { color: var(--ground); }
+:root[data-theme="night"] .tab:not(.is-on):hover { color: var(--ink); }
+
+/* ── fog: an icon rail on the left ─────────────────────────── */
+
+:root[data-theme="fog"] .tabs {
+  position: fixed; left: 0; top: var(--bar-h, 64px); bottom: 0; width: var(--nav-side); z-index: 4;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 0;
+  background: transparent; border: 0; border-right: 1px solid var(--line); border-radius: 0; box-shadow: none; backdrop-filter: none;
+}
+:root[data-theme="fog"] .tabs__pill { display: none; }
+:root[data-theme="fog"] .tab {
+  width: 48px; height: 48px; padding: 0; border-radius: 15px; display: grid; place-items: center;
+  color: var(--dim); font-size: 0; text-shadow: none;
+}
+:root[data-theme="fog"] .tab .tab__icon { display: block; width: 21px; height: 21px; }
+:root[data-theme="fog"] .tab.is-on { background: color-mix(in oklab, var(--c1) 20%, transparent); color: var(--c3); }
+:root[data-theme="fog"] .tab:not(.is-on):hover { background: var(--glass-hi); color: var(--ink); }
+
+/* ── amber: plain words on top, [the selected one] in amber ── */
+
+:root[data-theme="amber"] .tabs { display: flex; width: auto; min-width: 0; overflow: hidden; background: transparent; border: 0; box-shadow: none; backdrop-filter: none; gap: clamp(10px, 1.4vw, 20px); }
+:root[data-theme="amber"] .tabs__pill { display: none; }
+:root[data-theme="amber"] .tab { overflow: hidden; text-overflow: clip; flex: 0 1 auto; min-width: 0; font: 400 12px/1 var(--mono); text-transform: lowercase; letter-spacing: 0; color: var(--dim); padding: 8px 2px; text-shadow: none; border-radius: 0; }
+:root[data-theme="amber"] .tab.is-on { color: var(--c1); }
+:root[data-theme="amber"] .tab.is-on::before { content: "["; }
+:root[data-theme="amber"] .tab.is-on::after { content: "]"; }
+:root[data-theme="amber"] :is(h1, h2, .panel__title) { font-family: var(--display); font-weight: 500; letter-spacing: -0.01em; }
+
+/* ── the picker (theme.js) ──────────────────────────────────── */
+
+.theme-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.theme-pick__opt {
+  position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 18px;
+  min-height: 86px; padding: 12px; text-align: left; cursor: pointer;
+  background: var(--sw-bg); color: var(--sw-ink); border: 1px solid var(--sw-line); border-radius: var(--sw-r);
+  font: 500 13px/1.2 var(--sw-font); transition: transform .25s cubic-bezier(.16, 1, .3, 1), box-shadow .25s;
+}
+.theme-pick__opt:hover { transform: translateY(-2px); }
+.theme-pick__opt.is-on { box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--c1); }
+.theme-pick__sample { font: 600 22px/1 var(--sw-display); }
+.theme-pick__dot { position: absolute; right: 12px; top: 12px; width: 12px; height: 12px; border-radius: 50%; background: var(--sw-acc); }
+
+/* ── the title-bar button (mountThemeButton) ────────────────── */
+
+.theme-btn { position: relative; -webkit-app-region: no-drag; }
+.theme-btn__open {
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; cursor: pointer; white-space: nowrap;
+  font: 600 12px/1 var(--text); color: var(--ink); background: var(--glass); border: 1px solid var(--line-hi);
+  border-radius: var(--r-btn, 999px); backdrop-filter: blur(12px); transition: border-color .25s, background .25s;
+}
+.theme-btn__open:hover, .theme-btn__open[aria-expanded="true"] { border-color: var(--c1); }
+.theme-btn__open svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.theme-btn__open svg circle { fill: currentColor; stroke: none; }
+.theme-btn__panel {
+  position: absolute; right: 0; top: calc(100% + 10px); z-index: 60; width: 340px; padding: 12px;
+  background: var(--ground); border: 1px solid var(--line-hi); border-radius: var(--r, 18px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .45); animation: theme-pop .3s cubic-bezier(.16, 1, .3, 1) both;
+}
+.theme-btn__panel[hidden] { display: none; }
+@keyframes theme-pop { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
+
+/* ── the first-run question (askTheme) ──────────────────────── */
+/* A panel at the bottom over the live window: the app itself, re-dressed on
+   every click, is the preview. A light scrim only, so it stays visible. */
+
+.theme-ask { position: fixed; inset: 0; z-index: 9500; display: flex; align-items: flex-end; justify-content: center; padding: 24px; background: linear-gradient(to top, rgba(0, 0, 0, .55), transparent 60%); animation: theme-ask-in .5s cubic-bezier(.16, 1, .3, 1) both; }
+.theme-ask.is-leaving { animation: theme-ask-out .35s ease both; }
+@keyframes theme-ask-in { from { opacity: 0; } }
+@keyframes theme-ask-out { to { opacity: 0; } }
+.theme-ask__panel {
+  width: min(860px, 100%); padding: 22px 24px 20px; display: grid; gap: 14px;
+  background: var(--ground); color: var(--ink); border: 1px solid var(--line-hi); border-radius: var(--r, 18px);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .5); animation: theme-ask-up .6s cubic-bezier(.16, 1, .3, 1) both;
+}
+@keyframes theme-ask-up { from { transform: translateY(40px); opacity: 0; } }
+.theme-ask__title { margin: 0; font: 700 22px/1.2 var(--display); letter-spacing: -0.01em; }
+.theme-ask__hint { margin: -6px 0 0; color: var(--dim); font: 400 13.5px/1.5 var(--text); }
+.theme-ask .theme-pick { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.theme-ask .theme-pick__opt { min-height: 104px; }
+.theme-ask__keep {
+  justify-self: end; padding: 13px 24px; cursor: pointer; border: 0; border-radius: var(--r-btn, 14px);
+  font: 700 13px/1 var(--text); color: var(--on-acc, #0b0a10); background: var(--c1);
+}
+
+/* ── the tutorial in the new themes (tutor.js) ─────────────────── */
+
+:root[data-theme]:not([data-theme="studio"]) .tut-card {
+  background: var(--ground); color: var(--ink); border: 1px solid var(--line-hi); border-radius: var(--r);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .45); backdrop-filter: none; font-family: var(--text);
+}
+:root[data-theme]:not([data-theme="studio"]) .tut-card__title { font-family: var(--display); color: var(--ink); background: none; -webkit-text-fill-color: currentColor; }
+:root[data-theme]:not([data-theme="studio"]) .tut-ring { border-color: var(--c1); box-shadow: 0 0 0 4px color-mix(in oklab, var(--c1) 25%, transparent); border-radius: var(--r-sm); }
+:root[data-theme]:not([data-theme="studio"]) .tut-arrow__path { stroke: var(--c1); }
+:root[data-theme]:not([data-theme="studio"]) .tut-next { background: var(--c1); color: var(--on-acc); border-radius: var(--r-btn); box-shadow: none; }
+:root[data-theme="silence"] .tut-cut, :root[data-theme="amber"] .tut-cut { rx: 0; }
+:root[data-theme="silence"] .tut-card { box-shadow: 8px 8px 0 var(--ink); }
+:root[data-theme="amber"] .tut-card__text { font-family: var(--mono); font-size: 13px; }
+
+/* A narrow window: the theme button keeps its icon, the label moves to the tooltip. */
+@media (max-width: 1360px) {
+  .theme-btn__open { padding: 0 9px; }
+  .theme-btn__open span { display: none; }
+}
+:root[data-theme]:not([data-theme="studio"]) .tut-ring { animation: none; }
+:root[data-theme]:not([data-theme="studio"]) .tut-card__foot .tut-next { text-transform: none; letter-spacing: 0; }

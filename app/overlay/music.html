@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>mgi-stream music</title>
+<style>
+  @font-face { font-family: 'Unbounded'; font-weight: 500; src: url(/fonts/Unbounded-500-cyrillic.woff2) format('woff2'); unicode-range: U+0400-045F, U+0490-0491; }
+  @font-face { font-family: 'Unbounded'; font-weight: 500; src: url(/fonts/Unbounded-500-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+2000-206F; }
+  @font-face { font-family: 'Manrope'; font-weight: 600; src: url(/fonts/Manrope-600-cyrillic.woff2) format('woff2'); unicode-range: U+0400-045F, U+0490-0491; }
+  @font-face { font-family: 'Manrope'; font-weight: 600; src: url(/fonts/Manrope-600-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+2000-206F; }
+  @font-face { font-family: 'JetBrains Mono'; font-weight: 600; src: url(/fonts/JetBrainsMono-600-cyrillic.woff2) format('woff2'); unicode-range: U+0400-045F, U+0490-0491; }
+  @font-face { font-family: 'JetBrains Mono'; font-weight: 600; src: url(/fonts/JetBrainsMono-600-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+2000-206F; }
+
+  /* The TikTok pair: hot pink into coral, cyan as the counterweight. */
+  :root {
+    --c1: #ff3d8b; --c2: #ff7a8a; --c3: #25f4ee;
+    --ink: #f7f3ff; --dim: #c4bdd8; --ok: #25f4ee; --no: #ff3d6e;
+    --settle: cubic-bezier(.16, 1, .3, 1);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: transparent; overflow: hidden; height: 100vh; }
+  body {
+    color: var(--ink); font: 600 16px/1.3 'Manrope', sans-serif;
+    display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-start;
+    padding: 28px; gap: 14px;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, .85);
+  }
+  .mono { font: 600 12px/1.2 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; }
+
+  /* ── notes: who ordered what, stacked above the player ── */
+  #notes { display: flex; flex-direction: column; gap: 6px; }
+  .note {
+    display: grid; grid-template-columns: 3px auto; gap: 10px; align-items: center;
+    padding: 4px 0; animation: note-in .5s var(--settle) both;
+  }
+  .note::before { content: ''; align-self: stretch; background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  .note.no::before { background: var(--no); box-shadow: 0 0 10px var(--no); }
+  .note b { color: var(--c3); font-weight: 600; }
+  .note.no b { color: #ff9ab4; }
+  .note .why { display: block; color: var(--dim); font-size: 13px; }
+  .note.out { animation: note-out .5s ease both; }
+  @keyframes note-in { from { opacity: 0; transform: translateY(10px); filter: blur(4px); } }
+  @keyframes note-out { to { opacity: 0; transform: translateX(-16px); } }
+
+  /* ── the player: the picture, then the strip that carries the track ── */
+  #player { width: 540px; display: none; flex-direction: column; }
+  #player.on { display: flex; animation: rise .7s var(--settle) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(24px); filter: blur(8px); } }
+
+  #frame {
+    position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; overflow: hidden;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%);
+  }
+  #frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #player.audio #frame { display: none; }
+
+  #strip {
+    position: relative; display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center;
+    padding: 14px 18px 16px 0;
+  }
+  /* The slanted edge ties the strip to the frame's cut corner. */
+  #strip::before {
+    content: ''; position: absolute; inset: 0 0 0 -2px; z-index: -1;
+    background: linear-gradient(100deg, rgba(10, 8, 18, .86), rgba(10, 8, 18, .55) 70%, transparent);
+  }
+  #rail { width: 5px; align-self: stretch; background: linear-gradient(var(--c1), var(--c2)); box-shadow: 0 0 14px var(--c1); }
+  #thumb { display: none; width: 64px; height: 64px; object-fit: cover; }
+  #player.audio #strip { grid-template-columns: auto auto 1fr; }
+  #player.audio #thumb { display: block; }
+  #who { color: var(--c3); margin-bottom: 5px; }
+  #title {
+    font: 500 21px/1.22 'Unbounded', sans-serif; letter-spacing: -.01em;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  #channel { color: var(--dim); font-size: 14px; margin-top: 3px; }
+  #time { display: flex; align-items: center; gap: 10px; margin-top: 10px; color: var(--dim); }
+  #bar { flex: 1; height: 3px; background: rgba(255, 255, 255, .18); }
+  #fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--c1), var(--c2)); box-shadow: 0 0 8px var(--c1); }
+  #votes { color: #ff9ab4; display: none; }
+  #votes.on { display: inline; }
+
+  /* `/song`: the strip answers in the room by lighting up for a moment. */
+  #player.ask #rail { animation: ask 1.2s ease-in-out 3; }
+  #player.ask #title { animation: ask-title 1.2s ease-in-out 3; }
+  @keyframes ask { 50% { background: var(--c3); box-shadow: 0 0 26px var(--c3); } }
+  @keyframes ask-title { 50% { color: var(--c3); } }
+
+  #next { margin-top: 2px; color: var(--dim); display: none; }
+  #next.on { display: block; }
+  #next span { color: var(--ink); text-transform: none; letter-spacing: 0; font-family: 'Manrope', sans-serif; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div id="notes"></div>
+
+<div id="player">
+  <div id="frame"><video id="video" muted playsinline></video></div>
+  <div id="strip">
+    <div id="rail"></div>
+    <img id="thumb" alt="">
+    <div>
+      <div id="who" class="mono"></div>
+      <div id="title"></div>
+      <div id="channel"></div>
+      <div id="time" class="mono"><span id="pos">0:00</span><div id="bar"><div id="fill"></div></div><span id="dur">0:00</span><span id="votes"></span></div>
+    </div>
+  </div>
+  <div id="next" class="mono"></div>
+</div>
+
+<script>
+const T = {
+  ru: {
+    ordered: "заказ", next: "дальше", skip: "скип",
+    queued: "в очереди", pending: "ждёт одобрения стримера",
+    reason: {
+      empty: "после команды нужно название трека", noSub: "заказ музыки сейчас выключен",
+      bannedUser: "заказы закрыты", tier: "заказ только для своих", perViewer: "лимит заказов на зрителя",
+      full: "очередь полная", bannedTrack: "этот трек запрещён", bannedWord: "запрещённое слово",
+      duplicate: "уже в очереди", server: "$1", rules: "$1", download: "не скачалось",
+    },
+  },
+  en: {
+    ordered: "request", next: "next", skip: "skip",
+    queued: "queued", pending: "waiting for the streamer",
+    reason: {
+      empty: "add a track name after the command", noSub: "music requests are off right now",
+      bannedUser: "requests are closed", tier: "requests are for regulars", perViewer: "request limit reached",
+      full: "the queue is full", bannedTrack: "this track is banned", bannedWord: "banned word",
+      duplicate: "already queued", server: "$1", rules: "$1", download: "download failed",
+    },
+  },
+};
+let t = T.ru;
+
+const $ = (id) => document.getElementById(id);
+const video = $("video");
+const player = $("player");
+let current = null;
+let target = { position: 0, paused: false, at: 0 };
+
+const clock = (s) => {
+  s = Math.max(0, Math.floor(s || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+function show(track, src) {
+  current = track;
+  player.className = "on" + (track.video ? "" : " audio");
+  $("who").textContent = `${t.ordered} · ${track.nick}`;
+  $("title").textContent = track.title;
+  $("channel").textContent = track.channel || "";
+  $("dur").textContent = clock(track.duration);
+  $("thumb").src = track.thumbnail || "";
+  $("votes").className = "";
+  if (track.video) {
+    video.src = src;
+    video.currentTime = 0;
+    video.play().catch(() => {});
+  } else {
+    video.removeAttribute("src");
+    video.load();
+  }
+}
+
+function hide() {
+  current = null;
+  player.className = "";
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+}
+
+// The app plays the sound and reports its position; the picture follows it.
+function follow() {
+  if (!current) return;
+  const pos = target.paused ? target.position : target.position + (Date.now() - target.at) / 1000;
+  $("pos").textContent = clock(pos);
+  $("fill").style.width = current.duration ? Math.min(100, (pos / current.duration) * 100) + "%" : "0";
+  if (!current.video || !video.src) return;
+  if (target.paused) {
+    if (!video.paused) video.pause();
+    return;
+  }
+  if (video.paused) video.play().catch(() => {});
+  // A seek takes a moment to land; asking again meanwhile restarts it forever.
+  if (video.seeking || !video.duration) return;
+  const want = Math.min(pos, video.duration - 0.1);
+  if (Math.abs(video.currentTime - want) > 0.4) video.currentTime = want;
+}
+setInterval(follow, 250);
+
+function note({ nick, title, ok, reason, arg }) {
+  const el = document.createElement("div");
+  el.className = "note" + (ok ? "" : " no");
+  const why = ok ? t[arg] || "" : (t.reason[reason] || reason).replace("$1", arg || "");
+  el.innerHTML = '<span><b></b> <span class="what"></span><span class="why mono"></span></span>';
+  el.querySelector("b").textContent = nick;
+  el.querySelector(".what").textContent = title ? "· " + title : "";
+  el.querySelector(".why").textContent = why;
+  $("notes").append(el);
+  while ($("notes").children.length > 3) $("notes").firstElementChild.remove();
+  setTimeout(() => el.classList.add("out"), 6500);
+  setTimeout(() => el.remove(), 7000);
+}
+
+function connect() {
+  const ws = new WebSocket("ws://" + location.host);
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.kind === "hello" && T[m.lang]) t = T[m.lang];
+    else if (m.kind === "music-play") show(m.track, m.src);
+    else if (m.kind === "music-stop") hide();
+    else if (m.kind === "music-sync") {
+      if (current && m.uid === current.uid) target = m;
+    } else if (m.kind === "music-note") note(m);
+    else if (m.kind === "music-song" && current) {
+      player.classList.remove("ask");
+      void player.offsetWidth;
+      player.classList.add("ask");
+    } else if (m.kind === "music-queue") {
+      const n = m.next?.[0];
+      $("next").className = n ? "mono on" : "mono";
+      $("next").innerHTML = n ? `${t.next} · <span></span>` : "";
+      if (n) $("next").querySelector("span").textContent = `${n.title} (${n.nick})`;
+      $("votes").className = m.votes ? "on" : "";
+      $("votes").textContent = m.votes ? `${t.skip} ${m.votes}` : "";
+    }
+  };
+  ws.onclose = () => setTimeout(connect, 2000);
+}
+connect();
+</script>
+</body>
+</html>

@@ -6,6 +6,13 @@ directories:
   output: dist
   buildResources: build
 
+# electron-updater reads latest.yml from the GitHub release; the release
+# itself is created by .github/workflows/release.yml, never by the builder.
+publish:
+  provider: github
+  owner: madgodinc
+  repo: mgi-stream
+
 files:
   - app/**/*
   - "!**/*.map"

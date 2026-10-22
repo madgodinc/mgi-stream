@@ -1,11 +1,11 @@
 {
   "name": "mgi-stream",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Reads TikTok LIVE chat out loud into OBS. Self-hosted, no API key.",
   "scripts": {
     "start": "electron .",
     "icon": "node tools/make-icon.mjs",
-    "dist": "electron-builder --win",
+    "dist": "electron-builder --win --publish never",
     "test": "node --test test/*.test.mjs"
   },
   "keywords": [
@@ -19,6 +19,7 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "msedge-tts": "^2.0.7",
     "tiktok-live-connector": "^2.4.3",
     "ws": "^8.21.1"

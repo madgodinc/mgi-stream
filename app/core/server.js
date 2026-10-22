@@ -7,7 +7,17 @@ import { TikTokLiveConnection, WebcastEvent, ControlEvent } from "tiktok-live-co
 import { Speaker } from "./tts.js";
 import { decide } from "./filter.js";
 
-const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript" };
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css",
+  ".js": "text/javascript",
+  ".woff2": "font/woff2",
+  ".mp4": "video/mp4",
+  ".m4a": "audio/mp4",
+  ".webm": "video/webm",
+  ".opus": "audio/ogg",
+  ".mp3": "audio/mpeg",
+};
 const RETRY_MS = 15000;
 
 /**
@@ -68,9 +78,13 @@ const OFFLINE = /offline|isn'?t\s+online|not\s+online|not\s+live|has\s+ended/i;
  * and the chat connection and overlay keep running.
  */
 export class StreamServer extends EventEmitter {
-  constructor(overlayDir) {
+  /** `fontDir` lets the overlays use the window's fonts; `music` is optional. */
+  constructor(overlayDir, { fontDir = null, music = null } = {}) {
     super();
     this.overlayDir = overlayDir;
+    this.fontDir = fontDir;
+    this.music = music;
+    if (music) this.#wireMusic(music);
     this.cfg = null;
     this.http = null;
     this.wss = null;
@@ -92,6 +106,30 @@ export class StreamServer extends EventEmitter {
     return this.cfg ? `http://localhost:${this.cfg.port}` : "";
   }
 
+  /** The music overlay is a page of its own, so it can sit anywhere in the scene. */
+  get musicUrl() {
+    return this.cfg ? `http://localhost:${this.cfg.port}/music` : "";
+  }
+
+  /** What the app window plays: the same loopback server, so OBS and the window share one file. */
+  mediaUrl(uid) {
+    return this.cfg ? `http://127.0.0.1:${this.cfg.port}/media/${uid}` : "";
+  }
+
+  #wireMusic(music) {
+    music.on("play", ({ track }) => this.#broadcast({ kind: "music-play", track, src: `/media/${track.uid}` }));
+    music.on("stop", () => this.#broadcast({ kind: "music-stop" }));
+    music.on("note", (n) => this.#broadcast({ kind: "music-note", ...n }));
+    music.on("song", ({ track }) => this.#broadcast({ kind: "music-song", track }));
+    music.on("change", (state) => this.#broadcast({ kind: "music-queue", next: state.queue.slice(0, 3), votes: state.votes }));
+  }
+
+  /** The window's playback position, passed on so the overlay's picture keeps up. */
+  musicSync(uid, position, paused) {
+    this.music?.progress(uid, position, paused);
+    this.#broadcast({ kind: "music-sync", uid, position, paused, at: Date.now() });
+  }
+
   async start(cfg, { mock = false } = {}) {
     if (this.running) await this.stop();
     this.cfg = cfg;
@@ -105,6 +143,8 @@ export class StreamServer extends EventEmitter {
 
     await this.#serve(cfg.port);
     this.running = true;
+    this.music?.configure(cfg.music);
+    this.music?.setLive(true);
 
     if (mock) {
       this.#startMock();
@@ -128,6 +168,7 @@ export class StreamServer extends EventEmitter {
 
   async stop() {
     this.running = false;
+    this.music?.setLive(false);
     clearInterval(this.mockTimer);
     clearTimeout(this.retryTimer);
     this.mockTimer = null;
@@ -160,6 +201,7 @@ export class StreamServer extends EventEmitter {
       ["voice", "rate", "pitch", "nickRate", "nickPause", "mgiUrl", "mgiKey"].some((k) => cfg[k] !== this.cfg[k]);
     this.cfg = { ...cfg, username: this.cfg.username, port: this.cfg.port };
     if (revoiced) this.speaker = new Speaker(this.cfg);
+    this.music?.configure(cfg.music);
   }
 
   // ── local server for the OBS overlay ────────────────────────────────────────
@@ -168,8 +210,13 @@ export class StreamServer extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.http = http.createServer((req, res) => {
         const url = (req.url || "/").split("?")[0];
-        const name = url === "/" ? "index.html" : path.basename(url);
-        fs.readFile(path.join(this.overlayDir, name), (err, data) => {
+        const media = url.match(/^\/media\/(\d+)$/);
+        if (media) return this.#sendMedia(req, res, Number(media[1]));
+        const font = /^\/fonts\/[\w.-]+\.woff2$/.test(url);
+        const dir = font && this.fontDir ? this.fontDir : this.overlayDir;
+        let name = url === "/" ? "index.html" : path.basename(url);
+        if (!path.extname(name)) name += ".html";
+        fs.readFile(path.join(dir, name), (err, data) => {
           if (err) return res.writeHead(404).end("not found");
           res.writeHead(200, { "content-type": MIME[path.extname(name)] ?? "application/octet-stream" });
           res.end(data);
@@ -178,7 +225,13 @@ export class StreamServer extends EventEmitter {
 
       this.wss = new WebSocketServer({ server: this.http });
       this.wss.on("connection", (ws) => {
-        ws.send(JSON.stringify({ kind: "hello", username: this.cfg.username, voice: this.cfg.voice }));
+        ws.send(JSON.stringify({ kind: "hello", username: this.cfg.username, voice: this.cfg.voice, lang: this.cfg.lang }));
+        // An overlay that joins mid-track (OBS scene switch, source refresh) picks the track up.
+        const now = this.music?.snapshot();
+        if (now?.current) {
+          ws.send(JSON.stringify({ kind: "music-play", track: now.current, src: `/media/${now.current.uid}` }));
+          ws.send(JSON.stringify({ kind: "music-sync", uid: now.current.uid, position: now.position, paused: now.paused, at: Date.now() }));
+        }
       });
 
       this.http.once("error", (err) => {
@@ -195,6 +248,37 @@ export class StreamServer extends EventEmitter {
       // promises the page is not reachable from the rest of the network.
       this.http.listen(port, "127.0.0.1", () => resolve());
     });
+  }
+
+  /** A music file, with Range: a video element seeks by asking for byte ranges. */
+  #sendMedia(req, res, uid) {
+    const track = this.music?.fileOf(uid);
+    if (!track) return res.writeHead(404).end("not found");
+    let size;
+    try {
+      size = fs.statSync(track.file).size;
+    } catch {
+      return res.writeHead(404).end("not found");
+    }
+    const type = MIME["." + track.ext] ?? "application/octet-stream";
+    const m = String(req.headers.range ?? "").match(/^bytes=(\d*)-(\d*)$/);
+    if (!m || (!m[1] && !m[2])) {
+      res.writeHead(200, { "content-type": type, "content-length": size, "accept-ranges": "bytes", "cache-control": "no-store" });
+      return fs.createReadStream(track.file).pipe(res);
+    }
+    const start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+    const end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+    if (start > end || start >= size) {
+      return res.writeHead(416, { "content-range": `bytes */${size}` }).end();
+    }
+    res.writeHead(206, {
+      "content-type": type,
+      "content-length": end - start + 1,
+      "content-range": `bytes ${start}-${end}/${size}`,
+      "accept-ranges": "bytes",
+      "cache-control": "no-store",
+    });
+    fs.createReadStream(track.file, { start, end }).pipe(res);
   }
 
   #broadcast(msg) {
@@ -336,6 +420,12 @@ export class StreamServer extends EventEmitter {
 
   /** Every chat line enters here, from TikTok, the demo timer or a test. */
   onChat(nick, text, identity = {}) {
+    // A music command is an order, not a message to read out.
+    const order = this.music?.onChat(nick, text, identity);
+    if (order) {
+      this.emit("message", { nick, text, spoken: false, reason: order });
+      return;
+    }
     const verdict = decide(this.cfg, { nick, text, identity });
     this.emit("message", {
       nick,

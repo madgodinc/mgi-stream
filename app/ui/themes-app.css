@@ -1,0 +1,57 @@
+/* mgi-stream's own dressing for the MGI themes, after themes/themes.css
+   (the shared tokens and shell). Studio is app.css as it always was; every
+   rule here is for the other four. */
+
+:root[data-theme]:not([data-theme="studio"]) :is(#top, #foot, #upd) {
+  background: var(--glass); border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: var(--shadow); backdrop-filter: var(--blur);
+}
+
+/* Text on the accent: the studio's near-black reads badly on silence red. */
+:root[data-theme]:not([data-theme="studio"]) :is(#lang button.sel, .segments button.sel, .track .acts button.yes) {
+  background: var(--c1); color: var(--on-acc); box-shadow: none;
+}
+:root[data-theme]:not([data-theme="studio"]) .segments,
+:root[data-theme]:not([data-theme="studio"]) #lang { border-radius: var(--r-sm); }
+:root[data-theme]:not([data-theme="studio"]) .segments button { border-radius: var(--r-sm); }
+
+:root[data-theme]:not([data-theme="studio"]) :is(#status.error, #foot #note, #subBody .err) { color: var(--bad); }
+:root[data-theme]:not([data-theme="studio"]) select option { background: var(--glass-hi); color: var(--ink); }
+:root[data-theme]:not([data-theme="studio"]) #status { background: var(--well); border-color: var(--line); backdrop-filter: none; }
+
+/* Off air -> stop: the theme's alarm colour, flat. */
+:root[data-theme]:not([data-theme="studio"]) #air.on { background: var(--bad); color: #fff; box-shadow: none; }
+:root[data-theme]:not([data-theme="studio"]) #air.on:active { box-shadow: none; }
+
+:root[data-theme]:not([data-theme="studio"]) .check i { background: var(--line); border-color: var(--line); }
+:root[data-theme]:not([data-theme="studio"]) .check.on i { background: var(--c1); box-shadow: none; }
+:root[data-theme]:not([data-theme="studio"]) input[type="range"]::-webkit-slider-thumb { border-color: var(--c1); box-shadow: none; }
+
+:root[data-theme]:not([data-theme="studio"]) .section > h2::before,
+:root[data-theme]:not([data-theme="studio"]) .feed > h2::before,
+:root[data-theme]:not([data-theme="studio"]) .deck > h2::before { background: var(--c1); box-shadow: none; }
+
+:root[data-theme]:not([data-theme="studio"]) .line.live .bar { background: linear-gradient(var(--c1), var(--c1)) top / 100% var(--fill, 0%) no-repeat, var(--line); box-shadow: none; }
+:root[data-theme]:not([data-theme="studio"]) #upd-dlg .sheet { background: var(--ground); border-radius: var(--r); }
+:root[data-theme]:not([data-theme="studio"]) #seekFill { box-shadow: none; }
+
+/* silence: everything square, hairlines in ink, headings plain. */
+:root[data-theme="silence"] :is(#top, #foot, #upd, .section, .feed, .deck) { border-color: var(--line-hi); }
+:root[data-theme="silence"] :is(input[type="text"], select, textarea) { border-color: var(--line-hi); background: transparent; border-radius: 0; }
+:root[data-theme="silence"] .section > h2::before,
+:root[data-theme="silence"] .feed > h2::before,
+:root[data-theme="silence"] .deck > h2::before { border-radius: 0; transform: none; width: 7px; height: 7px; }
+:root[data-theme="silence"] #channel { font: 800 24px/1.2 var(--display); letter-spacing: -0.03em; }
+
+/* night: round, black, lime only where something is on. */
+:root[data-theme="night"] :is(input[type="text"], select, textarea) { border-radius: 14px; }
+
+/* amber: monospace everywhere, headings in Literata. */
+:root[data-theme="amber"] .section > h2,
+:root[data-theme="amber"] .feed > h2,
+:root[data-theme="amber"] .deck > h2 { font: 500 17px/1.2 var(--display); text-transform: none; letter-spacing: 0; }
+:root[data-theme="amber"] #channel { font: 400 24px/1.2 var(--display); }
+:root[data-theme="amber"] .line .what { font-family: var(--display); }
+
+/* The theme section in the OBS tab. */
+#themePick { margin-top: 2px; }

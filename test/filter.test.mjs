@@ -78,3 +78,17 @@ test("the nickname template is applied", () => {
   assert.equal(v.body, "привет");
   assert.equal(run({ sayNickname: false }, msg("Катя", "привет")).lead, "");
 });
+
+test("digits in a nickname are never read out", async () => {
+  const { spokenNick, decide } = await import("../app/core/filter.js");
+  const { DEFAULTS } = await import("../app/core/config.js");
+  assert.equal(spokenNick("kate_1998"), "kate");
+  assert.equal(spokenNick("x1x2x3"), "x x x");
+  assert.equal(spokenNick("анон228"), "анон");
+  assert.equal(spokenNick("12345"), "");
+  const v = decide({ ...DEFAULTS }, { nick: "kate_1998", text: "привет всем", identity: {} });
+  assert.equal(v.lead, "kate");
+  const n = decide({ ...DEFAULTS }, { nick: "777", text: "привет всем", identity: {} });
+  assert.equal(n.lead, "");
+  assert.equal(n.phrase, "привет всем");
+});

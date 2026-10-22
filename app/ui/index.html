@@ -2,10 +2,12 @@
 <html lang="ru" data-tab="voice">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; media-src 'self' data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; media-src 'self' data: http://127.0.0.1:*; img-src 'self' data: https://i.ytimg.com">
 <title>mgi-stream</title>
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="themes/themes.css">
+<link rel="stylesheet" href="themes-app.css">
 </head>
 <body>
 
@@ -24,14 +26,33 @@
   </div>
   <nav class="tabs" id="tabs">
     <span class="tabs__pill" id="pill"></span>
-    <button type="button" class="tab is-on" data-tab="voice" data-t="tabVoice"></button>
-    <button type="button" class="tab" data-tab="who" data-t="tabWho"></button>
-    <button type="button" class="tab" data-tab="reading" data-t="tabReading"></button>
-    <button type="button" class="tab" data-tab="obs" data-t="tabObs"></button>
+    <button type="button" class="tab is-on" data-tab="voice"><svg class="tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6v11H9zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span data-t="tabVoice"></span></button>
+    <button type="button" class="tab" data-tab="who"><svg class="tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21a7 7 0 0 1 14 0M17 11a3 3 0 1 0 0-6M22 21a6 6 0 0 0-4-5.6"/></svg><span data-t="tabWho"></span></button>
+    <button type="button" class="tab" data-tab="reading"><svg class="tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-t="tabReading"></span></button>
+    <button type="button" class="tab" data-tab="music"><svg class="tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/></svg><span data-t="tabMusic"></span></button>
+    <button type="button" class="tab" data-tab="obs"><svg class="tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18v12H3zM8 21h8M12 17v4"/></svg><span data-t="tabObs"></span></button>
   </nav>
   <div class="bar__right">
+    <div id="theme-btn"></div>
     <div id="status" class="mono"><i></i><span id="statusText"></span></div>
     <span id="lang"><button data-l="ru">ru</button><button data-l="en">en</button></span>
+  </div>
+</div>
+
+<div class="mgi-body">
+<div id="upd" hidden>
+  <span id="upd-text"></span>
+  <span class="spacer"></span>
+  <button class="secondary small" id="upd-open" data-t="upd.open"></button>
+  <button class="secondary small" id="upd-skip" data-t="upd.skip"></button>
+  <button class="primary" id="upd-go"></button>
+</div>
+
+<div id="upd-dlg" hidden>
+  <div class="sheet">
+    <h2 id="upd-title"></h2>
+    <div id="upd-list"></div>
+    <div id="upd-actions"></div>
   </div>
 </div>
 
@@ -131,6 +152,94 @@
       </div>
     </section>
 
+    <section class="section" data-pane="music" id="sub">
+      <h2 data-t="m.subTitle"></h2>
+      <div id="subBody"></div>
+    </section>
+
+    <section class="section" data-pane="music">
+      <h2 data-t="m.requests"></h2>
+      <div class="check" id="m-enabled"><i></i><span data-t="m.enabled"></span></div>
+      <div class="cmds">
+        <label class="field"><span class="mono" data-t="m.cmd"></span><input type="text" id="m-cmd" spellcheck="false"></label>
+        <label class="field"><span class="mono" data-t="m.skipCmd"></span><input type="text" id="m-skipCmd" spellcheck="false"></label>
+        <label class="field"><span class="mono" data-t="m.songCmd"></span><input type="text" id="m-songCmd" spellcheck="false"></label>
+      </div>
+      <p class="hint" data-t="m.cmdHint"></p>
+      <div class="field">
+        <label class="mono" data-t="m.who"></label>
+        <div class="segments" id="m-audience">
+          <button data-v="everyone" data-t="everyone"></button>
+          <button data-v="followers" data-t="followers"></button>
+          <button data-v="subscribers" data-t="subscribers"></button>
+          <button data-v="moderators" data-t="moderators"></button>
+        </div>
+      </div>
+      <div class="check" id="m-approve"><i></i><span data-t="m.approve"></span></div>
+      <div class="check" id="m-songReply"><i></i><span data-t="m.songReply"></span></div>
+      <div class="check" id="m-showNotes"><i></i><span data-t="m.showNotes"></span></div>
+      <div class="slider">
+        <div class="head mono"><span data-t="m.skipVotes"></span><b id="m-skipVotesVal"></b></div>
+        <input type="range" id="m-skipVotes" min="0" max="15" step="1">
+      </div>
+    </section>
+
+    <section class="section" data-pane="music">
+      <h2 data-t="m.limits"></h2>
+      <div class="slider">
+        <div class="head mono"><span data-t="m.maxMinutes"></span><b id="m-maxMinutesVal"></b></div>
+        <input type="range" id="m-maxMinutes" min="1" max="15" step="1">
+      </div>
+      <div class="slider">
+        <div class="head mono"><span data-t="m.perViewer"></span><b id="m-perViewerVal"></b></div>
+        <input type="range" id="m-perViewer" min="1" max="10" step="1">
+      </div>
+      <div class="slider">
+        <div class="head mono"><span data-t="m.maxQueue"></span><b id="m-maxQueueVal"></b></div>
+        <input type="range" id="m-maxQueue" min="2" max="40" step="1">
+      </div>
+    </section>
+
+    <section class="section" data-pane="music">
+      <h2 data-t="m.picture"></h2>
+      <div class="segments" id="m-mode">
+        <button data-v="video" data-t="m.modeVideo"></button>
+        <button data-v="audio" data-t="m.modeAudio"></button>
+      </div>
+      <div class="segments" id="m-maxHeight">
+        <button data-v="480">480p</button>
+        <button data-v="720">720p</button>
+      </div>
+      <div class="check" id="m-duck"><i></i><span data-t="m.duck"></span></div>
+      <p class="hint" data-t="m.obsHowTo"></p>
+      <div class="inline">
+        <span class="url" id="m-url"></span>
+        <button class="secondary small" id="m-copy" data-t="copy"></button>
+      </div>
+    </section>
+
+    <section class="section" data-pane="music">
+      <h2 data-t="m.bans"></h2>
+      <div class="field">
+        <label class="mono" for="m-bannedUsers" data-t="m.bannedUsers"></label>
+        <textarea id="m-bannedUsers" rows="2" spellcheck="false"></textarea>
+      </div>
+      <div class="field">
+        <label class="mono" for="m-bannedWords" data-t="m.bannedWords"></label>
+        <textarea id="m-bannedWords" rows="2" spellcheck="false"></textarea>
+      </div>
+      <div class="field">
+        <label class="mono" for="m-bannedTracks" data-t="m.bannedTracks"></label>
+        <textarea id="m-bannedTracks" rows="2" spellcheck="false"></textarea>
+      </div>
+    </section>
+
+    <section class="section" data-pane="obs">
+      <h2 data-t="themeTitle"></h2>
+      <div id="themePick"></div>
+      <p class="hint" data-t="themeHint"></p>
+    </section>
+
     <section class="section" data-pane="obs">
       <h2 data-t="obsTitle"></h2>
       <p class="hint" data-t="obsHowTo"></p>
@@ -140,6 +249,8 @@
         <input type="text" id="port" style="width:110px" spellcheck="false">
       </div>
 
+      <div class="check" id="trayOnClose"><i></i><span data-t="trayOnClose"></span></div>
+
       <div class="field">
         <label class="mono" for="signApiKey" data-t="signKey"></label>
         <input type="text" id="signApiKey" spellcheck="false">
@@ -148,6 +259,39 @@
     </section>
 
   </aside>
+
+  <section class="deck" id="deck">
+    <h2 data-t="m.deckTitle"></h2>
+    <div id="now" class="idle">
+      <div id="screen"><video id="mplayer" playsinline></video><img id="mcover" alt=""></div>
+      <div id="nowText">
+        <div class="mono" id="nowWho"></div>
+        <div id="nowTitle"></div>
+        <div id="seek"><div id="seekFill"></div></div>
+        <div class="mono" id="nowTime"></div>
+      </div>
+      <div id="transport">
+        <button class="primary" id="m-play" data-t="m.pause"></button>
+        <button class="secondary" id="m-skip" data-t="m.skip"></button>
+        <button class="secondary small" id="m-mute" data-t="m.mute"></button>
+        <input type="range" id="m-volume" min="0" max="100" step="1">
+        <span class="spacer"></span>
+        <button class="secondary small" id="m-banTrack" data-t="m.banTrack"></button>
+        <button class="secondary small" id="m-banUser" data-t="m.banUser"></button>
+      </div>
+    </div>
+    <div id="lists">
+      <div id="pendingBox">
+        <div class="mono label" data-t="m.pending"></div>
+        <ol id="pendingList"></ol>
+      </div>
+      <div class="mono label" data-t="m.queue"></div>
+      <ol id="queueList"></ol>
+      <div id="queueEmpty" class="hint"></div>
+      <div class="mono label" data-t="m.log"></div>
+      <ol id="log"></ol>
+    </div>
+  </section>
 
   <section class="feed">
     <h2 data-t="chatTitle"></h2>
@@ -171,6 +315,7 @@
   <span id="note"></span>
   <span class="mono" id="queue"></span>
 </footer>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>

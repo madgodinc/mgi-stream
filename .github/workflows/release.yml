@@ -37,5 +37,6 @@ jobs:
           dist/mgi-stream-setup.exe
           dist/mgi-stream-portable.exe
           dist/latest.yml
+          dist/mgi-stream-setup.exe.blockmap
           --title "mgi-stream ${{ github.ref_name }}"
           --notes "Download **mgi-stream-setup.exe** below and run it. Nothing else has to be on the machine: the app carries its own runtime. The build is not code-signed, so SmartScreen warns once, choose More info and then Run anyway. The portable build skips the installer."

@@ -3,3 +3,5 @@ dist/
 build/icon.ico
 build/icon.png
 *.log
+app/icon.png
+app/tray.png
