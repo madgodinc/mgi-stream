@@ -106,3 +106,19 @@ test("gift names decline in Russian", () => {
   assert.equal(giftText("Rose", 21, "ru"), "21 роза");
   assert.equal(giftText("Something New", 3, "ru"), "«Something New» ×3");
 });
+
+test("hints from MGI Games take every other idle thought, in order", () => {
+  const { pet, tick, sent } = rig({ thoughts: true });
+  pet.hints(["!маргит - 1000", "!руны - 50"]);
+  tick(4 * 50000);
+  const thoughts = sent.filter((m) => m.say?.style === "thought").map((m) => m.say.text);
+  assert.equal(thoughts.length, 4);
+  assert.equal(thoughts[0], "!маргит - 1000");
+  assert.notEqual(thoughts[1], "!руны - 50");
+  assert.equal(thoughts[2], "!руны - 50");
+
+  pet.hints([]);
+  sent.length = 0;
+  tick(2 * 50000);
+  assert.ok(!sent.some((m) => m.say?.text?.startsWith("!")), "an empty list ends the hints");
+});

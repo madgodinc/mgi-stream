@@ -6,7 +6,8 @@ import { WebSocketServer } from "ws";
 import { TikTokLiveConnection, WebcastEvent, ControlEvent } from "tiktok-live-connector";
 import { Speaker } from "./tts.js";
 import { decide } from "./filter.js";
-import { parseGift } from "./gifts.js";
+import { parseGift, viewer } from "./gifts.js";
+import { GAMES_PATH, readGamesMessage, isGameCommand } from "./games-feed.js";
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -79,11 +80,20 @@ const OFFLINE = /offline|isn'?t\s+online|not\s+online|not\s+live|has\s+ended/i;
  * A status carrying `soft: true` is a hiccup the run survived, not a stop.
  * Speech failures are always soft: a phrase that cannot be voiced is skipped
  * and the chat connection and overlay keep running.
+ *
+ * A WebSocket opened at /games is MGI Games (games-feed.js), not an overlay:
+ * it gets the room as data and never the overlay's messages, and the overlay
+ * never sees what goes to it.
  */
 export class StreamServer extends EventEmitter {
   /** `fontDir` lets the overlays use the window's fonts; `music`, `pet` and `banks` are optional. */
-  constructor(overlayDir, { fontDir = null, music = null, pet = null, banks = null } = {}) {
+  constructor(overlayDir, { fontDir = null, music = null, pet = null, banks = null, version = "" } = {}) {
     super();
+    this.version = version;
+    this.gamesClients = new Set();
+    // Chat words MGI Games treats as commands: never read out, whatever the prefix setting.
+    this.gameCommands = [];
+    this.onAir = false;
     this.overlayDir = overlayDir;
     this.fontDir = fontDir;
     this.music = music;
@@ -159,6 +169,7 @@ export class StreamServer extends EventEmitter {
     this.giftSeen = new RecentIds();
     this.speaker = new Speaker(cfg);
     this.speechFailing = false;
+    this.onAir = false;
 
     await this.#serve(cfg.port);
     this.running = true;
@@ -178,6 +189,12 @@ export class StreamServer extends EventEmitter {
   }
 
   #status(status) {
+    // A soft hiccup is not the room going away.
+    const on = status.state === "live";
+    if (!status.soft && on !== this.onAir) {
+      this.onAir = on;
+      this.#games({ kind: "live", on });
+    }
     this.shown = status;
     this.emit("status", status);
   }
@@ -269,8 +286,10 @@ export class StreamServer extends EventEmitter {
         });
       });
 
-      this.wss = new WebSocketServer({ server: this.http });
-      this.wss.on("connection", (ws) => {
+      // Overlays send nothing and MGI Games sends small JSON; nobody needs ws's 100 MB default.
+      this.wss = new WebSocketServer({ server: this.http, maxPayload: 64 * 1024 });
+      this.wss.on("connection", (ws, req) => {
+        if ((req?.url || "/").split("?")[0] === GAMES_PATH) return this.#gamesClient(ws);
         ws.send(JSON.stringify({ kind: "hello", username: this.cfg.username, voice: this.cfg.voice, lang: this.cfg.lang }));
         ws.send(JSON.stringify(this.#audio()));
         if (this.pet) ws.send(JSON.stringify({ kind: "pet-cfg", ...this.pet.cfg }));
@@ -335,7 +354,40 @@ export class StreamServer extends EventEmitter {
   #broadcast(msg) {
     if (!this.wss) return;
     const payload = JSON.stringify(msg);
-    for (const client of this.wss.clients) if (client.readyState === 1) client.send(payload);
+    for (const client of this.wss.clients) {
+      if (client.readyState === 1 && !this.gamesClients.has(client)) client.send(payload);
+    }
+  }
+
+  // ── MGI Games ──────────────────────────────────────────────────────────────
+
+  #gamesClient(ws) {
+    this.gamesClients.add(ws);
+    ws.on("close", () => {
+      this.gamesClients.delete(ws);
+      // Prices of a shop that is gone are not worth showing.
+      if (!this.gamesClients.size) {
+        this.pet?.hints([]);
+        this.gameCommands = [];
+      }
+    });
+    ws.on("error", () => {});
+    ws.on("message", (raw) => this.gamesMessage(raw));
+    ws.send(JSON.stringify({ kind: "hello", app: "mgi-stream", version: this.version, username: this.cfg.username, live: this.onAir }));
+  }
+
+  /** One message from MGI Games, raw from the socket; what does not parse is ignored. */
+  gamesMessage(raw) {
+    const m = readGamesMessage(raw);
+    if (m?.kind === "say") this.pet?.say(m.nick ? `${m.nick}: ${m.text}` : m.text);
+    else if (m?.kind === "hints") this.pet?.hints(m.lines);
+    else if (m?.kind === "commands") this.gameCommands = m.prefixes;
+  }
+
+  #games(msg) {
+    if (!this.gamesClients.size) return;
+    const payload = JSON.stringify(msg);
+    for (const client of this.gamesClients) if (client.readyState === 1) client.send(payload);
   }
 
   // ── chat source ────────────────────────────────────────────────────────────
@@ -373,7 +425,7 @@ export class StreamServer extends EventEmitter {
 
     conn.on(WebcastEvent.CHAT, (ev) => {
       if (!current()) return;
-      const nick = ev?.user?.nickname || ev?.user?.uniqueId || "someone";
+      const { nick, ...who } = viewer(ev?.user);
       // v3 of the protocol carries the text in `content`; older payloads use `comment`.
       const text = ev?.content ?? ev?.comment ?? "";
       // A message with no timestamp is passed through: losing live chat is the
@@ -381,14 +433,14 @@ export class StreamServer extends EventEmitter {
       const said = Number(ev?.common?.createTime ?? ev?.createTime ?? 0);
       if (said && said < liveFrom) return;
       if (!this.seen.fresh(String(ev?.common?.msgId ?? ev?.msgId ?? ""))) return;
-      if (text) this.onChat(nick, text, ev?.userIdentity ?? {});
+      if (text) this.onChat(nick, text, ev?.userIdentity ?? {}, who);
     });
     // What the room does besides talking feeds the slime in the music window.
     const fresh = (ev) => {
       const at = Number(ev?.common?.createTime ?? ev?.createTime ?? 0);
       return !at || at >= liveFrom;
     };
-    const who = (ev) => ev?.user?.nickname || ev?.user?.uniqueId || "someone";
+    const who = (ev) => viewer(ev?.user).nick;
     conn.on(WebcastEvent.GIFT, (ev) => {
       if (!current() || !fresh(ev)) return;
       const g = parseGift(ev);
@@ -396,8 +448,8 @@ export class StreamServer extends EventEmitter {
       if (!this.giftSeen.fresh(g.key)) return;
       this.onGift(g);
     });
-    conn.on(WebcastEvent.LIKE, (ev) => current() && fresh(ev) && this.pet?.like(who(ev), Number(ev?.likeCount ?? 1) || 1));
-    conn.on(WebcastEvent.FOLLOW, (ev) => current() && fresh(ev) && this.pet?.follow(who(ev)));
+    conn.on(WebcastEvent.LIKE, (ev) => current() && fresh(ev) && this.onLike(viewer(ev?.user), Number(ev?.likeCount ?? 1) || 1));
+    conn.on(WebcastEvent.FOLLOW, (ev) => current() && fresh(ev) && this.onFollow(viewer(ev?.user)));
     conn.on(WebcastEvent.SHARE, (ev) => current() && fresh(ev) && this.pet?.share(who(ev)));
     conn.on(WebcastEvent.STREAM_END, () => current() && this.#retry(cfg, { code: "ended" }));
     conn.on(ControlEvent.DISCONNECTED, () => current() && this.#retry(cfg, { code: "dropped" }));
@@ -480,22 +532,31 @@ export class StreamServer extends EventEmitter {
     const mod = { isModeratorOfAnchor: true };
     const sub = { isSubscriberOfAnchor: true };
     const fan = { isFollowerOfAnchor: true };
+    // Fake handles and account ids, so MGI Games can keep wallets in the demo too.
+    const as = (nick, id, uid) => ({ nick, id, uid });
+    const mad = as("mad_god", "mad_god", "7000000000000000001");
+    const anon = as("анон228", "anon228", "7000000000000000002");
+    const viewer01 = as("viewer_01", "viewer_01", "7000000000000000003");
+    const spammer = as("spammer", "spam_bot_1", "7000000000000000004");
+    const kate = as("Катя", "katya.plays", "7000000000000000005");
+    const newcomer = as("новенький", "new_one_42", "7000000000000000006");
     const samples = [
-      ["mad_god", "привет чат, проверка озвучки", mod],
-      ["анон228", "а какой это голос?", {}],
-      ["viewer_01", "🔥🔥🔥", fan],
-      ["spammer", "заходи на www.spam.com", {}],
-      ["Катя", "!сколько ты уже стримишь сегодня", sub],
+      [mad, "привет чат, проверка озвучки", mod],
+      [anon, "а какой это голос?", {}],
+      [viewer01, "🔥🔥🔥", fan],
+      [spammer, "заходи на www.spam.com", {}],
+      [kate, "!сколько ты уже стримишь сегодня", sub],
     ];
+    const chat = ([{ nick, ...who }, text, identity]) => this.onChat(nick, text, identity, who);
     let i = 0;
     this.mockTimer = setInterval(() => {
-      this.onChat(...samples[i % samples.length]);
+      chat(samples[i % samples.length]);
       // Every other tick the room does something else: a rose combo, likes, a follow, a big gift.
       const extra = i++ % 8;
-      if (extra === 1) for (let n = 1; n <= 7; n++) this.onGift({ nick: "Катя", giftId: 5655, name: "Rose", diamonds: 1, count: n, streakable: true, end: n === 7 });
-      if (extra === 3) this.pet?.like("viewer_01", 80);
-      if (extra === 5) this.pet?.follow("новенький");
-      if (extra === 7) this.onGift({ nick: "mad_god", giftId: 7934, name: "Galaxy", diamonds: 1000, count: 1, streakable: false, end: true });
+      if (extra === 1) for (let n = 1; n <= 7; n++) this.onGift({ ...kate, giftId: 5655, name: "Rose", diamonds: 1, count: n, streakable: true, end: n === 7 });
+      if (extra === 3) this.onLike(viewer01, 80);
+      if (extra === 5) this.onFollow(newcomer);
+      if (extra === 7) this.onGift({ ...mad, giftId: 7934, name: "Galaxy", diamonds: 1000, count: 1, streakable: false, end: true });
     }, 5000);
   }
 
@@ -507,18 +568,49 @@ export class StreamServer extends EventEmitter {
   onGift(g) {
     this.pet?.gift(g);
     const fresh = this.banks ? this.banks.gift(g) : g.streakable && !g.end ? 0 : g.count;
-    if (fresh > 0) this.emit("gift", { ...g, fresh });
+    if (fresh <= 0) return;
+    this.emit("gift", { ...g, fresh });
+    this.#games({
+      kind: "gift",
+      id: g.id ?? "",
+      uid: g.uid ?? "",
+      nick: g.nick,
+      gift: g.name,
+      giftId: g.giftId ?? null,
+      coins: g.diamonds,
+      count: fresh,
+      at: Date.now(),
+    });
+  }
+
+  /** Likes and follows enter here, from TikTok or the demo timer; `who` is gifts.js viewer(). */
+  onLike(who, n = 1) {
+    this.#games({ kind: "like", id: who.id ?? "", uid: who.uid ?? "", nick: who.nick, count: n, at: Date.now() });
+    this.pet?.like(who.nick, n);
+  }
+
+  onFollow(who) {
+    this.#games({ kind: "follow", id: who.id ?? "", uid: who.uid ?? "", nick: who.nick, at: Date.now() });
+    this.pet?.follow(who.nick);
   }
 
   // ── speech queue ───────────────────────────────────────────────────────────
 
-  /** Every chat line enters here, from TikTok, the demo timer or a test. */
-  onChat(nick, text, identity = {}) {
+  /**
+   * Every chat line enters here, from TikTok, the demo timer or a test.
+   * `who` is the viewer's {id, uid} (gifts.js viewer), for MGI Games.
+   */
+  onChat(nick, text, identity = {}, who = {}) {
+    this.#games({ kind: "chat", id: who.id ?? "", uid: who.uid ?? "", nick, text, at: Date.now() });
     this.pet?.chat();
     // A music command is an order, not a message to read out.
     const order = this.music?.onChat(nick, text, identity);
     if (order) {
       this.emit("message", { nick, text, spoken: false, reason: order });
+      return;
+    }
+    if (isGameCommand(this.gameCommands, text)) {
+      this.emit("message", { nick, text, spoken: false, reason: "game" });
       return;
     }
     const verdict = decide(this.cfg, { nick, text, identity });

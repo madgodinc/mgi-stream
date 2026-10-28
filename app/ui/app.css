@@ -444,6 +444,7 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:active::-we
 .track .t { min-width: 0; }
 .track .t b { display: block; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .track .t span { color: var(--dim); font-size: 12px; }
+.track .t .saved { font: 600 11px var(--mono); font-style: normal; color: var(--c1); }
 .track .acts { display: flex; gap: 4px; opacity: 0; transition: opacity .2s; }
 .track:hover .acts, .track:focus-within .acts { opacity: 1; }
 .track .acts button {

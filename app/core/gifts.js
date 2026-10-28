@@ -8,6 +8,18 @@
 // says thanks; a piggy bank cannot wait, the jar fills on every tap, so it
 // counts the difference between running totals instead.
 
+/**
+ * Who did something, as the rest of the app knows them. Connector 2.x hands
+ * over the raw proto user: the @handle is `displayId` and the numeric account
+ * id is `id`; the legacy shape names them `uniqueId` and `userId`. The handle
+ * is what a viewer types and sees; the number survives a handle change.
+ */
+export function viewer(user) {
+  const u = user ?? {};
+  const id = String(u.uniqueId || u.displayId || "");
+  return { nick: u.nickname || id || "someone", id, uid: String(u.userId || u.id || "") };
+}
+
 /** The fields of a connector GIFT event the app uses. */
 export function parseGift(ev) {
   const d = ev?.giftDetails ?? {};
@@ -16,7 +28,7 @@ export function parseGift(ev) {
   const end = !streakable || Boolean(ev?.repeatEnd);
   const msgId = String(ev?.common?.msgId ?? ev?.msgId ?? "");
   return {
-    nick: ev?.user?.nickname || ev?.user?.uniqueId || "someone",
+    ...viewer(ev?.user),
     giftId: ev?.giftId,
     name: d.giftName ?? ev?.giftName ?? "",
     diamonds: Number(d.diamondCount ?? ev?.diamondCount ?? 1) || 1,
@@ -45,7 +57,8 @@ export class Streaks {
     if (!g.streakable) return Math.max(0, g.count);
     const t = this.now();
     for (const [k, s] of this.open) if (t - s.at > this.idleMs) this.open.delete(k);
-    const key = `${g.nick}|${g.giftId ?? g.name}`;
+    // Two viewers with one display name are still two streaks.
+    const key = `${g.id || g.nick}|${g.giftId ?? g.name}`;
     const s = this.open.get(key);
     let fresh;
     if (!s) fresh = g.count;

@@ -37,6 +37,8 @@ export const DEFAULTS = {
   // The app goes on air by itself when it starts; it waits for the room if
   // the stream has not begun yet.
   autoConnect: true,
+  // MGI Games (game effects for gifts) starts with this app when it is installed.
+  startGames: true,
   signApiKey: "",
 
   // Our own voices (mgi:52.., mgi:57 is Mad) are synthesized by the MGI gateway.

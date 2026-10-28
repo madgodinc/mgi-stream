@@ -163,8 +163,8 @@ test("the viewer sees the bank being filled now", () => {
 });
 
 test("parseGift reads the connector's combo fields", () => {
-  const g = parseGift({ user: { nickname: "Аня" }, giftId: 5655, repeatCount: 3, repeatEnd: false, giftDetails: { giftName: "Rose", diamondCount: 1, giftType: 1 }, common: { msgId: "77" } });
-  assert.deepEqual(g, { nick: "Аня", giftId: 5655, name: "Rose", diamonds: 1, count: 3, streakable: true, end: false, key: "77|3|0" });
+  const g = parseGift({ user: { nickname: "Аня", displayId: "anya", id: "7001" }, giftId: 5655, repeatCount: 3, repeatEnd: false, giftDetails: { giftName: "Rose", diamondCount: 1, giftType: 1 }, common: { msgId: "77" } });
+  assert.deepEqual(g, { nick: "Аня", id: "anya", uid: "7001", giftId: 5655, name: "Rose", diamonds: 1, count: 3, streakable: true, end: false, key: "77|3|0" });
   assert.equal(parseGift({ giftDetails: { giftName: "Galaxy", diamondCount: 1000, giftType: 2 } }).end, true);
 });
 

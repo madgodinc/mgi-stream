@@ -10,6 +10,7 @@ import * as config from "./core/config.js";
 import { Account } from "./core/account.js";
 import { Music } from "./core/music.js";
 import { Wishlist } from "./core/wishlist.js";
+import { WishCache } from "./core/wishcache.js";
 import { Pet } from "./core/pet.js";
 import { Banks } from "./core/banks.js";
 import { Engine } from "./core/actions.js";
@@ -18,6 +19,7 @@ import { giftRulesFor } from "./core/rules.js";
 import { accelerator } from "./core/keys.js";
 import { FxLayer } from "./fx.js";
 import { Updates } from "./core/updates.js";
+import { startGames } from "./core/companion.js";
 import { ThemeSetting, settingsPath } from "./core/theme.js";
 import updaterPkg from "electron-updater";
 
@@ -36,19 +38,31 @@ const account = new Account({
 });
 // Mad's voice comes with the subscription, no gateway key needed.
 useSubscription(() => (account.status().ok ? account.token : null));
+const wishlist = new Wishlist(path.join(configDir, "wishlist.json"));
+// Every wishlist track keeps a copy here, so the wishlist plays while the music server cannot.
+const wishCache = new WishCache({
+  dir: path.join(configDir, "wishlist-media"),
+  wanted: () => wishlist.list().map((t) => t.id),
+  download: (id, dir, name) => {
+    if (!account.status().ok) return Promise.reject(new Error("noSub"));
+    return music.fetchMedia(id, dir, name, config.load(configDir).music);
+  },
+});
 // The queue is kept on disk, so a restart in the middle of a stream picks it up.
 const music = new Music({
   account,
   workDir: path.join(app.getPath("temp"), "mgi-stream-music"),
   stateFile: path.join(configDir, "music-queue.json"),
+  cache: wishCache,
 });
 music.sweep();
-const wishlist = new Wishlist(path.join(configDir, "wishlist.json"));
+// The window sees which tracks are on this PC.
+const wishes = () => wishlist.list().map((t) => ({ ...t, saved: wishCache.has(t.id) }));
 const pet = new Pet();
 // The jars outlive the app like the music queue does: a restart mid-stream keeps every coin.
 const banks = new Banks({ stateFile: path.join(configDir, "banks-state.json") });
 banks.configure(config.load(configDir).banks);
-const server = new StreamServer(path.join(here, "overlay"), { fontDir: path.join(here, "ui", "fonts"), music, pet, banks });
+const server = new StreamServer(path.join(here, "overlay"), { fontDir: path.join(here, "ui", "fonts"), music, pet, banks, version: app.getVersion() });
 
 // ── actions: what a full bank or a gift rule does on the streamer's PC ────────
 // Keys go through SendInput (core/input.js); darkness and pictures through a
@@ -164,6 +178,13 @@ music.on("change", (s) => send("music:state", s));
 music.on("request", (r) => send("music:request", r));
 music.on("play", ({ track }) => send("music:play", { track, url: server.mediaUrl(track.uid) }));
 music.on("stop", () => send("music:stop"));
+wishCache.on("change", () => send("wishlist:state", wishes()));
+// A subscription that just came back: the copies waiting for it need not sit out the retry pause.
+let wasSubscribed = false;
+account.on("change", (s) => {
+  if (s.ok && !wasSubscribed) wishCache.resume();
+  wasSubscribed = s.ok;
+});
 updates.on("change", (i) => send("update", i));
 
 function createWindow() {
@@ -259,6 +280,8 @@ function updateTray() {
 app.whenReady().then(() => {
   if (!process.env.MGI_THEME) themes.watch();
   account.start();
+  // Copies of tracks gone from the wishlist go; missing ones come down once the account is known.
+  account.ready.then(() => wishCache.sync());
   updates.start();
   tray = new Tray(nativeImage.createFromPath(path.join(here, "tray.png")).resize({ width: 16, height: 16, quality: "best" }));
   tray.on("click", showWindow);
@@ -266,6 +289,9 @@ app.whenReady().then(() => {
   updateTray();
   createWindow();
   if (!process.env.MGI_SHOT) bindKill(config.load(configDir).fx.killKey);
+  const cfg = config.load(configDir);
+  // MGI Games retries the feed on its own, so it can start before the run goes on air.
+  if (cfg.startGames && !process.env.MGI_SHOT) startGames(cfg.port).catch(() => {});
 });
 
 app.on("before-quit", () => {
@@ -448,12 +474,21 @@ ipcMain.handle("pet:test", () => {
   for (let n = 1; n <= 5; n++) server.pet.gift({ nick: "тест", giftId: 5655, name: "Rose", count: n, streakable: true, end: n === 5 });
   return { ok: true };
 });
-ipcMain.handle("wishlist:get", () => wishlist.list());
+ipcMain.handle("wishlist:get", () => wishes());
 ipcMain.handle("wishlist:add", (_e, uid) => {
   const s = music.snapshot();
-  return wishlist.add([s.current, ...s.queue, ...s.pending].find((t) => t?.uid === uid));
+  const t = [s.current, ...s.queue, ...s.pending].find((q) => q?.uid === uid);
+  if (!t) return wishes();
+  wishlist.add(t);
+  // Already downloaded for the queue: that file is copied, nothing is fetched twice.
+  wishCache.add(t.id, music.fileOf(uid));
+  return wishes();
 });
-ipcMain.handle("wishlist:remove", (_e, id) => wishlist.remove(id));
+ipcMain.handle("wishlist:remove", (_e, id) => {
+  wishlist.remove(id);
+  wishCache.remove(id);
+  return wishes();
+});
 // The wishlist as the streamer's playlist, from the top or from one track;
 // viewers' requests still go first.
 ipcMain.handle("wishlist:play", (_e, { id, nick }) => {

@@ -13,8 +13,9 @@ import { rankOf, RANK } from "./filter.js";
  * only until it has played.
  *
  * YouTube is slow or blocked for many streamers, hence the server in the
- * middle. Nothing is cached on either side: the server deletes a file the
- * moment its last byte went out, this side deletes it after playing.
+ * middle. The server deletes a file the moment its last byte went out, this
+ * side deletes it after playing. The one exception is the streamer's wishlist:
+ * its tracks keep a copy on this PC (core/wishcache.js) and play from it.
  *
  * Playback is not here. The app window plays the sound (OBS captures the
  * program as its own audio line) and reports its position; the overlay shows
@@ -33,7 +34,7 @@ export const SERVER = "https://madgodinc.net/music/api";
 const KEEP_MS = 12 * 60 * 60 * 1000;
 const SAVE_POSITION_MS = 3000;
 // What a track carries to disk and back; the rest is rebuilt.
-const KEPT = ["uid", "id", "title", "channel", "duration", "thumbnail", "hasVideo", "nick", "state", "file", "ext", "video", "resume", "wish"];
+const KEPT = ["uid", "id", "title", "channel", "duration", "thumbnail", "hasVideo", "nick", "state", "file", "ext", "video", "resume", "wish", "cached"];
 // Wishlist tracks in a row that would not download: the wishlist stops.
 const WISH_FAILS = 3;
 
@@ -116,11 +117,13 @@ export class Music extends EventEmitter {
    * stream picks up at the same track and second, files kept. Without it
    * (tests) off air clears everything.
    */
-  constructor({ account, workDir, fetchImpl = fetch, server = SERVER, stateFile = null }) {
+  constructor({ account, workDir, fetchImpl = fetch, server = SERVER, stateFile = null, cache = null }) {
     super();
     this.account = account;
     this.workDir = workDir;
     this.stateFile = stateFile;
+    // The wishlist copies: a wishlist track plays from there and goes to the server only without one.
+    this.cache = cache;
     this.savedAt = 0;
     this.fetch = fetchImpl;
     this.server = server;
@@ -252,6 +255,7 @@ export class Music extends EventEmitter {
       if (!t) return null;
       const have = t.file && fs.existsSync(t.file);
       nextUid = Math.max(nextUid, t.uid + 1);
+      if (have && t.cached) this.cache?.hold(t.id);
       return { ...t, file: have ? t.file : null, state: t.state === "pending" ? "pending" : have ? "ready" : "queued", progress: have ? 1 : 0 };
     };
     this.queue = s.queue.map(back);
@@ -590,41 +594,73 @@ export class Music extends EventEmitter {
 
   async #download(track) {
     track.state = "loading";
+    track.cached = false;
+    const copy = track.wish && this.cache?.get(track.id);
+    if (copy) {
+      this.cache.hold(track.id);
+      Object.assign(track, { file: copy.file, ext: copy.ext, video: copy.video, cached: true, progress: 1 });
+      return;
+    }
     this.#changed();
-    const video = this.cfg.mode === "video" && track.hasVideo;
     // The streamer's own tracks are not held to the viewers' length limit, only to the server's.
     const max = track.wish ? undefined : this.cfg.maxMinutes * 60;
-    const start = await this.#api("POST", "/fetch", { id: track.id, video, max_height: this.cfg.maxHeight, max_duration: max });
+    const want = { video: this.cfg.mode === "video" && track.hasVideo, maxHeight: this.cfg.maxHeight, max };
+    const got = await this.#fetchMedia(track.id, want, this.workDir, String(track.uid), {
+      alive: () => this.#alive(track),
+      tick: (p) => {
+        if (p !== null) track.progress = p;
+        this.#changed();
+      },
+      started: (video) => (track.video = video),
+    });
+    track.file = got.file;
+    track.ext = got.ext;
+    track.video = got.video;
+    track.progress = 1;
+    // Wished before it came down: the wishlist keeps this file instead of fetching it again.
+    this.cache?.keep(track.id, got.file, got.ext, got.video);
+  }
+
+  /**
+   * One track from the server for the wishlist copies, with the streamer's
+   * video setting, outside the queue: {file, ext, video}.
+   */
+  fetchMedia(id, dir, name, cfg = this.cfg) {
+    const c = { ...MUSIC_DEFAULTS, ...cfg };
+    return this.#fetchMedia(id, { video: c.mode === "video", maxHeight: c.maxHeight }, dir, name);
+  }
+
+  /** The server's job: ask, wait, download into `dir/name.ext`. */
+  async #fetchMedia(id, { video: asked, maxHeight, max }, dir, name, { alive = () => true, tick = () => {}, started = () => {} } = {}) {
+    const start = await this.#api("POST", "/fetch", { id, video: asked, max_height: maxHeight, max_duration: max });
     if (start.status !== 200) throw new Error(start.data.error || `HTTP ${start.status}`);
     const job = start.data.job;
-    track.video = Boolean(start.data.video);
+    const video = Boolean(start.data.video);
+    started(video);
 
     const until = Date.now() + JOB_TIMEOUT_MS;
     for (;;) {
-      if (!this.#alive(track)) throw new Error("removed");
+      if (!alive()) throw new Error("removed");
       const s = await this.#api("GET", `/job/${job}`);
       if (s.status !== 200) throw new Error(s.data.error || `HTTP ${s.status}`);
       if (s.data.state === "ready") break;
       if (s.data.state === "failed") throw new Error(s.data.error || "failed");
-      if (s.data.total) track.progress = Math.min(0.99, s.data.done / s.data.total);
-      this.#changed();
+      tick(s.data.total ? Math.min(0.99, s.data.done / s.data.total) : null);
       if (Date.now() > until) throw new Error("timeout");
       await new Promise((r) => setTimeout(r, JOB_POLL_MS));
     }
 
     const res = await this.fetch(`${this.server}/file/${job}`, { headers: this.#headers(), signal: AbortSignal.timeout(JOB_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const ext = (res.headers.get("x-media-ext") || (track.video ? "mp4" : "m4a")).replace(/[^a-z0-9]/gi, "");
-    fs.mkdirSync(this.workDir, { recursive: true });
-    const file = path.join(this.workDir, `${track.uid}.${ext}`);
+    const ext = (res.headers.get("x-media-ext") || (video ? "mp4" : "m4a")).replace(/[^a-z0-9]/gi, "");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${name}.${ext}`);
     await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(file));
-    if (!this.#alive(track)) {
+    if (!alive()) {
       fs.rmSync(file, { force: true });
       throw new Error("removed");
     }
-    track.file = file;
-    track.ext = ext;
-    track.progress = 1;
+    return { file, ext, video };
   }
 
   #alive(track) {
@@ -632,8 +668,13 @@ export class Music extends EventEmitter {
   }
 
   #drop(track) {
-    if (track?.file) fs.rm(track.file, { force: true }, () => {});
-    if (track) track.file = null;
+    // A wishlist copy is not this queue's to delete; it is only let go of.
+    if (track?.file && track.cached) this.cache?.release(track.id);
+    else if (track?.file) fs.rm(track.file, { force: true }, () => {});
+    if (track) {
+      track.file = null;
+      track.cached = false;
+    }
   }
 
   #headers() {

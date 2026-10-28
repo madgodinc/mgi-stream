@@ -14,7 +14,7 @@ const themeReady = initTheme({
 
 const $ = (id) => document.getElementById(id);
 
-const CHECKS = ["sayNickname", "skipEmojiOnly", "skipLinks", "playInApp", "requirePrefix", "trayOnClose", "autoConnect"];
+const CHECKS = ["sayNickname", "skipEmojiOnly", "skipLinks", "playInApp", "requirePrefix", "trayOnClose", "autoConnect", "startGames"];
 const SLIDERS = {
   rate: (v) => `${v >= 0 ? "+" : ""}${v}%`,
   pitch: (v) => `${v >= 0 ? "+" : ""}${v}Hz`,

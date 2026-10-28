@@ -52,6 +52,9 @@ export class Pet {
     this.thanks = []; // finished gifts waiting for a bubble
     this.follows = [];
     this.lines = []; // other bubbles waiting: [text, mood, style]
+    this.hintLines = []; // from MGI Games: what a chat command costs
+    this.hintAt = 0;
+    this.hintTurn = false;
     this.busyUntil = 0;
     this.likesSince = 0;
     this.likeAt = 0;
@@ -195,6 +198,13 @@ export class Pet {
     this.#queue(String(text).slice(0, 140), "happy");
   }
 
+  /** Replaces the hint list; an empty list ends the hints. */
+  hints(lines = []) {
+    this.hintLines = lines.map((l) => String(l).slice(0, 140)).filter((l) => l.trim());
+    this.hintAt = 0;
+    this.hintTurn = false;
+  }
+
   // ── the bubble ─────────────────────────────────────────────────────────────
 
   #close(key) {
@@ -305,6 +315,11 @@ export class Pet {
     if (!this.asleep && t - this.lastEventAt > SLEEP_AFTER_MS && !this.playing) {
       this.asleep = true;
       this.send({ kind: "pet", mood: "sleep" });
+    }
+    // Every other idle slot is a hint, asleep or not: a quiet room is when viewers need one.
+    if (this.hintLines.length && (this.hintTurn = !this.hintTurn)) {
+      const text = this.hintLines[this.hintAt++ % this.hintLines.length];
+      return this.#say(text, this.asleep ? "sleep" : this.playing ? "dance" : "idle", "thought");
     }
     if (this.asleep) return this.#say(this.#pick("sleepy"), "sleep", "thought");
     if (!this.cfg.thoughts) return;

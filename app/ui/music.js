@@ -204,7 +204,7 @@ async function playWishes(id = null) {
 function renderWishes(list) {
   wishes = list || [];
   const now = state.current?.wish ? state.current.id : "";
-  sync($("wishList"), wishes, (w) => w.id, (w, i) => [i, w.id === now].join("|"), wishRow);
+  sync($("wishList"), wishes, (w) => w.id, (w, i) => [i, w.id === now, w.saved].join("|"), wishRow);
   $("wishEmpty").textContent = wishes.length ? "" : tr("m.wishEmpty");
   const c = state.current;
   $("m-wish").textContent = tr(c && wished(c.id) ? "m.wished" : "m.wish");
@@ -219,7 +219,9 @@ function wishRow(w, i) {
   const now = state.current?.wish && state.current.id === w.id;
   li.className = now ? "track playing" : "track";
   li.innerHTML = `<span class="n">${i + 1}</span><img alt="" src="${esc(w.thumbnail)}">
-    <div class="t"><b>${esc(w.title)}</b><span>${esc(w.channel || w.nick)} · ${clock(w.duration)}</span></div>
+    <div class="t"><b>${esc(w.title)}</b><span>${esc(w.channel || w.nick)} · ${clock(w.duration)}${
+      w.saved ? ` · <i class="saved" title="${esc(tr("m.wishSavedHint"))}">${esc(tr("m.wishSaved"))}</i>` : ""
+    }</span></div>
     <div class="acts"></div>`;
   const acts = li.querySelector(".acts");
   const btn = (label, fn, cls = "") => {
@@ -482,6 +484,11 @@ export async function initMusic(opts) {
   window.mgi.on("music:play", play);
   window.mgi.on("music:stop", stopped);
   window.mgi.on("music:request", logLine);
+  // A wishlist copy finished or went: the mark follows.
+  window.mgi.on("wishlist:state", (list) => {
+    wishes = list || [];
+    renderWishes(wishes);
+  });
   wishes = await window.mgi.wishlist.get();
   render(await window.mgi.music.state());
   relabel();

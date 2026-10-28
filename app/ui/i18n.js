@@ -124,6 +124,8 @@ const RU = {
     wishPlayOne: "играть",
     wishLoading: "вишлист · качается $1%",
     wishOpen: "youtube",
+    wishSaved: "на диске",
+    wishSavedHint: "Копия на этом ПК: трек играет, даже когда музыкальный сервер не может скачать его с YouTube.",
     wishNick: "вишлист",
     pending: "Ждут одобрения",
     queue: "Очередь",
@@ -214,6 +216,7 @@ const RU = {
   port: "Порт оверлея",
   trayOnClose: "Закрытие окна прячет программу в трей, эфир и музыка продолжают работать",
   autoConnect: "Выходить в эфир сразу при запуске программы",
+  startGames: "Запускать MGI Games вместе с программой",
   signKey: "Ключ EulerStream",
   signKeyNote: "Нужен, только если TikTok перестал пускать со словами про лимит подписи. Бесплатный ключ берётся на eulerstream.com, обычно он не требуется.",
 
@@ -240,6 +243,7 @@ const RU = {
     music: "заказ музыки",
     musicSkip: "голос за скип",
     musicSong: "что играет",
+    game: "команда игры",
   },
   tier: {
     followers: "подписчик",
@@ -379,6 +383,8 @@ const EN = {
     wishPlayOne: "play",
     wishLoading: "wishlist · loading $1%",
     wishOpen: "youtube",
+    wishSaved: "on disk",
+    wishSavedHint: "A copy on this PC: the track plays even when the music server cannot get it from YouTube.",
     wishNick: "wishlist",
     pending: "Waiting for approval",
     queue: "Queue",
@@ -469,6 +475,7 @@ const EN = {
   port: "Overlay port",
   trayOnClose: "Closing the window hides the app to the tray; the stream and music keep going",
   autoConnect: "Go on air as soon as the app starts",
+  startGames: "Start MGI Games together with the app",
   signKey: "EulerStream key",
   signKeyNote: "Only needed once TikTok starts refusing with a signature rate limit. A free key comes from eulerstream.com; most of the time there is no need for one.",
 
@@ -495,6 +502,7 @@ const EN = {
     music: "music request",
     musicSkip: "skip vote",
     musicSong: "now playing",
+    game: "game command",
   },
   tier: {
     followers: "follower",
