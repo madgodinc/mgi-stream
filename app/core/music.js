@@ -183,6 +183,8 @@ export class Music extends EventEmitter {
     return {
       current: view(this.current),
       wishlist: Boolean(this.wish),
+      // The wishlist track coming down: shown while nothing plays, or the wait looks like a fault.
+      wishNext: view(this.wishNext),
       paused: this.paused,
       position: this.position,
       votes: this.votes.size,
@@ -457,9 +459,16 @@ export class Music extends EventEmitter {
     if (!this.live) return false;
     const items = list();
     if (!items.length) return false;
-    this.#dropWishNext();
     const i = Math.max(0, items.findIndex((t) => t.id === from));
-    this.wish = { list, nick, at: items[i].id, fails: 0 };
+    // The same track asked again while it downloads: the download goes on.
+    // Starting it over is what made a slow track never come.
+    const same = this.wishNext?.id === items[i].id;
+    if (!same) this.#dropWishNext();
+    this.wish = { list, nick, at: same ? items[(i + 1) % items.length].id : items[i].id, fails: 0 };
+    if (same && !this.current?.wish) {
+      this.#changed();
+      return true;
+    }
     // A wishlist track playing now gives way at once; a viewer's plays out.
     if (this.current?.wish) this.finished(this.current.uid);
     else {

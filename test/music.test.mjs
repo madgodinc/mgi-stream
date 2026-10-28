@@ -330,3 +330,28 @@ test("off air the wishlist cannot start", () => {
   const m = new Music({ account: okAccount, workDir: workDir(), fetchImpl: fakeServer().fetchImpl });
   assert.equal(m.playWishlist(() => [{ id: "wishAAAAAAA", title: "A" }], "вишлист"), false);
 });
+
+test("asking for the wishlist track that is still downloading does not start its download over", async () => {
+  const srv = fakeServer();
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const slow = async (url, init) => {
+    if (url.includes("/job/")) await gate;
+    return srv.fetchImpl(url, init);
+  };
+  const m = new Music({ account: okAccount, workDir: workDir(), fetchImpl: slow });
+  m.configure({});
+  m.setLive(true);
+  const wishes = ["A", "B"].map((t) => ({ id: "wish" + t.repeat(7), title: t }));
+  m.playWishlist(() => wishes, "вишлист");
+  await sleep(20);
+  assert.equal(m.snapshot().wishNext.title, "A", "the window sees what is coming");
+  m.playWishlist(() => wishes, "вишлист");
+  m.playWishlist(() => wishes, "вишлист", "wishAAAAAAA");
+  release();
+  await settle(m);
+  assert.equal(srv.calls.filter((c) => c.route === "/fetch").length >= 1, true);
+  assert.equal(srv.calls.filter((c) => c.route === "/fetch" && c.body.id === "wishAAAAAAA").length, 1, "one download of A");
+  assert.equal(m.current.title, "A");
+  m.setLive(false);
+});

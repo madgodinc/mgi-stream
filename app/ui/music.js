@@ -362,6 +362,11 @@ function render(s) {
   if ($("mcover").getAttribute("src") !== (c?.thumbnail || "")) $("mcover").src = c?.thumbnail || "";
   $("nowWho").textContent = c ? `${tr("m.orderedBy")} ${c.nick}${s.votes ? ` · ${tr("m.votes")} ${s.votes}` : ""}` : "";
   $("nowTitle").textContent = c ? c.title : tr("m.nothing");
+  const w = !c && s.wishNext;
+  if (w) {
+    $("nowWho").textContent = tr("m.wishLoading", Math.round((w.progress || 0) * 100));
+    $("nowTitle").textContent = w.title;
+  }
   if (!c) {
     $("nowTime").textContent = "";
     $("seekFill").style.width = "0";
