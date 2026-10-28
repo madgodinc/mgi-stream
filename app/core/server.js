@@ -440,7 +440,6 @@ export class StreamServer extends EventEmitter {
       const at = Number(ev?.common?.createTime ?? ev?.createTime ?? 0);
       return !at || at >= liveFrom;
     };
-    const who = (ev) => viewer(ev?.user).nick;
     conn.on(WebcastEvent.GIFT, (ev) => {
       if (!current() || !fresh(ev)) return;
       const g = parseGift(ev);
@@ -450,7 +449,7 @@ export class StreamServer extends EventEmitter {
     });
     conn.on(WebcastEvent.LIKE, (ev) => current() && fresh(ev) && this.onLike(viewer(ev?.user), Number(ev?.likeCount ?? 1) || 1));
     conn.on(WebcastEvent.FOLLOW, (ev) => current() && fresh(ev) && this.onFollow(viewer(ev?.user)));
-    conn.on(WebcastEvent.SHARE, (ev) => current() && fresh(ev) && this.pet?.share(who(ev)));
+    conn.on(WebcastEvent.SHARE, (ev) => current() && fresh(ev) && this.onShare(viewer(ev?.user)));
     conn.on(WebcastEvent.STREAM_END, () => current() && this.#retry(cfg, { code: "ended" }));
     conn.on(ControlEvent.DISCONNECTED, () => current() && this.#retry(cfg, { code: "dropped" }));
     // A failed handshake reports itself twice, as an event and as a rejection.
@@ -555,7 +554,10 @@ export class StreamServer extends EventEmitter {
       const extra = i++ % 8;
       if (extra === 1) for (let n = 1; n <= 7; n++) this.onGift({ ...kate, giftId: 5655, name: "Rose", diamonds: 1, count: n, streakable: true, end: n === 7 });
       if (extra === 3) this.onLike(viewer01, 80);
-      if (extra === 5) this.onFollow(newcomer);
+      if (extra === 5) {
+        this.onFollow(newcomer);
+        this.onShare(newcomer);
+      }
       if (extra === 7) this.onGift({ ...mad, giftId: 7934, name: "Galaxy", diamonds: 1000, count: 1, streakable: false, end: true });
     }, 5000);
   }
@@ -592,6 +594,11 @@ export class StreamServer extends EventEmitter {
   onFollow(who) {
     this.#games({ kind: "follow", id: who.id ?? "", uid: who.uid ?? "", nick: who.nick, at: Date.now() });
     this.pet?.follow(who.nick);
+  }
+
+  onShare(who) {
+    this.#games({ kind: "share", id: who.id ?? "", uid: who.uid ?? "", nick: who.nick, at: Date.now() });
+    this.pet?.share(who.nick);
   }
 
   // ── speech queue ───────────────────────────────────────────────────────────

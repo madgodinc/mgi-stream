@@ -68,6 +68,7 @@ test("games clients get the room with ids; overlays never see it", async () => {
   s.onGift({ nick: "Кит", id: "kit", uid: "7002", giftId: 7934, name: "Galaxy", diamonds: 1000, count: 1, streakable: false, end: true });
   s.onLike({ nick: "Катя", id: "katya.plays", uid: "7001" }, 15);
   s.onFollow({ nick: "новый", id: "new_one", uid: "7003" });
+  s.onShare({ nick: "новый", id: "new_one", uid: "7003" });
   pet.send({ kind: "pet", mood: "happy" }); // the slime's own traffic is overlay traffic
   await settle();
 
@@ -77,9 +78,10 @@ test("games clients get the room with ids; overlays never see it", async () => {
     { kind: "gift", id: "kit", uid: "7002", nick: "Кит", gift: "Galaxy", giftId: 7934, coins: 1000, count: 1 },
     { kind: "like", id: "katya.plays", uid: "7001", nick: "Катя", count: 15 },
     { kind: "follow", id: "new_one", uid: "7003", nick: "новый" },
+    { kind: "share", id: "new_one", uid: "7003", nick: "новый" },
   ]);
   assert.ok(overlay.got.length > 0, "the overlay got the slime");
-  assert.ok(!overlay.got.some((m) => ["chat", "gift", "like", "follow"].includes(m.kind)), "and nothing of the feed");
+  assert.ok(!overlay.got.some((m) => ["chat", "gift", "like", "follow", "share"].includes(m.kind)), "and nothing of the feed");
   assert.ok(!games.got.some((m) => m.kind === "pet"), "the games client got nothing of the overlay");
 
   games.ws.close();
