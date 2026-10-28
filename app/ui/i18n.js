@@ -212,6 +212,7 @@ const RU = {
   queueDepth: "Глубина очереди",
   port: "Порт оверлея",
   trayOnClose: "Закрытие окна прячет программу в трей, эфир и музыка продолжают работать",
+  autoConnect: "Выходить в эфир сразу при запуске программы",
   signKey: "Ключ EulerStream",
   signKeyNote: "Нужен, только если TikTok перестал пускать со словами про лимит подписи. Бесплатный ключ берётся на eulerstream.com, обычно он не требуется.",
 
@@ -465,6 +466,7 @@ const EN = {
   queueDepth: "Queue depth",
   port: "Overlay port",
   trayOnClose: "Closing the window hides the app to the tray; the stream and music keep going",
+  autoConnect: "Go on air as soon as the app starts",
   signKey: "EulerStream key",
   signKeyNote: "Only needed once TikTok starts refusing with a signature rate limit. A free key comes from eulerstream.com; most of the time there is no need for one.",
 

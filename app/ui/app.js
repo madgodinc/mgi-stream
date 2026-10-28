@@ -14,7 +14,7 @@ const themeReady = initTheme({
 
 const $ = (id) => document.getElementById(id);
 
-const CHECKS = ["sayNickname", "skipEmojiOnly", "skipLinks", "playInApp", "requirePrefix", "trayOnClose"];
+const CHECKS = ["sayNickname", "skipEmojiOnly", "skipLinks", "playInApp", "requirePrefix", "trayOnClose", "autoConnect"];
 const SLIDERS = {
   rate: (v) => `${v >= 0 ? "+" : ""}${v}%`,
   pitch: (v) => `${v >= 0 ? "+" : ""}${v}Hz`,
@@ -474,4 +474,5 @@ async function loadVoices() {
   });
 
   if (location.search.includes("demo")) go(true);
+  else if (cfg.autoConnect && cfg.username.trim()) go(false);
 })();

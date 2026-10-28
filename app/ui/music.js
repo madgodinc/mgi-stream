@@ -36,6 +36,31 @@ const clock = (s) => {
 };
 const fill = (el) => el.style.setProperty("--fill", `${((el.value - el.min) / (el.max - el.min)) * 100}%`);
 const lines = (el) => el.value.split("\n").map((s) => s.trim()).filter(Boolean);
+/**
+ * Puts `items` into the list `ol`, keeping the rows that did not change: the
+ * state comes every second while a track downloads, and rebuilding every row
+ * each time made the lists twitch (thumbnails reloaded, hover buttons
+ * blinked). A row is made anew only when its `sig` changes.
+ */
+function sync(ol, items, key, sig, make) {
+  const old = new Map([...ol.children].map((li) => [li.dataset.key, li]));
+  const rows = items.map((it, i) => {
+    const k = String(key(it));
+    const sg = sig(it, i);
+    const have = old.get(k);
+    if (have && have.dataset.sig === sg) return have;
+    const li = make(it, i);
+    li.dataset.key = k;
+    li.dataset.sig = sg;
+    return li;
+  });
+  const keep = new Set(rows);
+  for (const li of [...ol.children]) if (!keep.has(li)) li.remove();
+  rows.forEach((li, i) => {
+    if (ol.children[i] !== li) ol.insertBefore(li, ol.children[i] ?? null);
+  });
+}
+
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 // ── settings ─────────────────────────────────────────────────────────────────
@@ -178,7 +203,8 @@ async function playWishes(id = null) {
 
 function renderWishes(list) {
   wishes = list || [];
-  $("wishList").replaceChildren(...wishes.map(wishRow));
+  const now = state.current?.wish ? state.current.id : "";
+  sync($("wishList"), wishes, (w) => w.id, (w, i) => [i, w.id === now].join("|"), wishRow);
   $("wishEmpty").textContent = wishes.length ? "" : tr("m.wishEmpty");
   const c = state.current;
   $("m-wish").textContent = tr(c && wished(c.id) ? "m.wished" : "m.wish");
@@ -271,14 +297,11 @@ function row(t, i, kind) {
   const li = document.createElement("li");
   li.className = "track";
   li.dataset.uid = t.uid;
-  const status =
-    t.state === "loading" ? `${tr("m.loading")} ${Math.round((t.progress || 0) * 100)}%` : t.state === "ready" ? tr("m.ready") : "";
   li.innerHTML = `<span class="n">${i + 1}</span><img alt="" src="${esc(t.thumbnail)}">
-    <div class="t"><b>${esc(t.title)}</b><span>${esc(t.nick)} · ${clock(t.duration)}${status ? " · " + status : ""}</span>
+    <div class="t"><b>${esc(t.title)}</b><span>${esc(t.nick)} · ${clock(t.duration)}<span class="st"></span></span>
     ${t.state === "loading" ? `<div class="load"><i></i></div>` : ""}</div>
     <div class="acts"></div>`;
-  // Through CSSOM: the page's CSP refuses style attributes in markup.
-  li.querySelector(".load i")?.style.setProperty("--p", `${Math.round((t.progress || 0) * 100)}%`);
+  paintStatus(li, t);
   const acts = li.querySelector(".acts");
   const btn = (label, fn, cls = "") => {
     const b = document.createElement("button");
@@ -319,12 +342,24 @@ function row(t, i, kind) {
   return li;
 }
 
+/** The download share of a row, changed in place without rebuilding it. */
+function paintStatus(li, t) {
+  const pct = Math.round((t.progress || 0) * 100);
+  const status = t.state === "loading" ? `${tr("m.loading")} ${pct}%` : t.state === "ready" ? tr("m.ready") : "";
+  li.querySelector(".st").textContent = status ? " · " + status : "";
+  // Through CSSOM: the page's CSP refuses style attributes in markup.
+  li.querySelector(".load i")?.style.setProperty("--p", `${pct}%`);
+}
+
+const rowSig = (kind) => (t, i) => [kind, i, t.state, t.title, t.nick, wished(t.id)].join("|");
+
 function render(s) {
   state = s;
   const c = s.current;
   const now = $("now");
   now.className = c ? (c.video ? "" : "audio") : "idle";
-  $("mcover").src = c?.thumbnail || "";
+  // The same picture again would still flash: set only a new one.
+  if ($("mcover").getAttribute("src") !== (c?.thumbnail || "")) $("mcover").src = c?.thumbnail || "";
   $("nowWho").textContent = c ? `${tr("m.orderedBy")} ${c.nick}${s.votes ? ` · ${tr("m.votes")} ${s.votes}` : ""}` : "";
   $("nowTitle").textContent = c ? c.title : tr("m.nothing");
   if (!c) {
@@ -333,8 +368,12 @@ function render(s) {
   }
 
   $("pendingBox").classList.toggle("on", s.pending.length > 0);
-  $("pendingList").replaceChildren(...s.pending.map((t, i) => row(t, i, "pending")));
-  $("queueList").replaceChildren(...s.queue.map((t, i) => row(t, i, "queue")));
+  sync($("pendingList"), s.pending, (t) => t.uid, rowSig("pending"), (t, i) => row(t, i, "pending"));
+  sync($("queueList"), s.queue, (t) => t.uid, rowSig("queue"), (t, i) => row(t, i, "queue"));
+  for (const t of [...s.pending, ...s.queue]) {
+    const li = document.querySelector(`#pendingList li[data-key="${t.uid}"], #queueList li[data-key="${t.uid}"]`);
+    if (li) paintStatus(li, t);
+  }
   $("queueEmpty").textContent = s.queue.length ? "" : tr("m.queueEmpty", cfg?.music.cmd || "/music");
   renderWishes(wishes);
 }
@@ -417,6 +456,8 @@ export function relabel() {
   $("m-window").textContent = tr(windowOpen ? "m.windowClose" : "m.windowOpen");
   $("pet-window").textContent = $("m-window").textContent;
   paint();
+  // Rows carry translated labels: a new language makes them all anew.
+  for (const id of ["pendingList", "queueList", "wishList"]) $(id).replaceChildren();
   render(state);
   renderAccount();
   $("m-play").textContent = player.paused ? tr("m.play") : tr("m.pause");

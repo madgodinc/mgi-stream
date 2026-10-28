@@ -34,6 +34,9 @@ export const DEFAULTS = {
   playInApp: true,
   // Closing the window hides it to the tray; the run goes on.
   trayOnClose: true,
+  // The app goes on air by itself when it starts; it waits for the room if
+  // the stream has not begun yet.
+  autoConnect: true,
   signApiKey: "",
 
   // Our own voices (mgi:52.., mgi:57 is Mad) are synthesized by the MGI gateway.
