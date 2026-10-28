@@ -5,7 +5,7 @@
 import { tr } from "./i18n.js";
 
 const $ = (id) => document.getElementById(id);
-const CHECKS = ["enabled", "thanks", "likes", "follows", "thoughts"];
+const CHECKS = ["enabled", "showSlime", "thanks", "likes", "follows", "thoughts"];
 
 let cfg = null;
 let touched = () => {};

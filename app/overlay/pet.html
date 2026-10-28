@@ -107,6 +107,11 @@
   body.bg-green .jar__name { color: #101010; }
   body.bg-green .jar__count { color: #6b3d00; }
 
+  /* "Show the slime" off: only the bubble and the player are left, the bubble
+     sits right over the track with room for its tail or thought puffs */
+  body.noslime #home, body.noslime #jar { display: none !important; }
+  body.noslime #bubble { margin-bottom: 40px; }
+
   #video, #thumbImg { display: none; }
 </style>
 </head>
@@ -241,6 +246,11 @@ function inside(ctx, { cx, cy, bw, bh, t: time }) {
 }
 
 function mount() {
+  if (cfg.showSlime === false) {
+    slime?.destroy();
+    slime = null;
+    return;
+  }
   // As big as the window allows, leaving room for the bubble and the track.
   const room = innerHeight - 190 - (current ? 96 : 0);
   const next = Math.max(0.6, Math.min(2.2, room / 340, (innerWidth - 40) / 300));
@@ -425,7 +435,11 @@ function connect() {
     if (m.kind === "hello" && T[m.lang]) t = T[m.lang];
     else if (m.kind === "pet-cfg") {
       const recolor = m.color !== cfg.color;
+      const hidden = m.showSlime === false;
+      const reshow = hidden !== (cfg.showSlime === false);
       cfg = m;
+      document.body.classList.toggle("noslime", hidden);
+      if (reshow) mount();
       document.documentElement.style.setProperty("--c1", (COLORS[cfg.color] ?? COLORS.mint)[0]);
       document.documentElement.style.setProperty("--c2", (COLORS[cfg.color] ?? COLORS.mint)[1]);
       if (recolor) slime?.colors(COLORS[cfg.color] ?? COLORS.mint);

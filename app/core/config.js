@@ -66,11 +66,17 @@ export const DEFAULTS = {
   fx: FX_DEFAULTS,
 };
 
+/** Only an explicit false hides the slime: a missing or mangled value keeps it on screen. */
+export function normalizePet(pet) {
+  const merged = { ...PET_DEFAULTS, ...(pet ?? {}) };
+  return { ...merged, showSlime: merged.showSlime !== false };
+}
+
 /** The groups merge key by key, so a newer version's new setting gets its default. */
 const withMusic = (cfg) => ({
   ...cfg,
   music: { ...MUSIC_DEFAULTS, ...(cfg.music ?? {}) },
-  pet: { ...PET_DEFAULTS, ...(cfg.pet ?? {}) },
+  pet: normalizePet(cfg.pet),
   ...normalizeRules(cfg),
 });
 

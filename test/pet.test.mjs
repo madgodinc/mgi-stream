@@ -134,3 +134,14 @@ test("a seven-line answer from MGI Games is shown in full and not rushed", () =>
   assert.deepEqual(shown.map((m) => m.say.text), help);
   assert.ok(shown.every((m) => m.say.ms >= 5000), "every line stays long enough to read");
 });
+
+test("a hidden slime still thanks in the bubble, and the window hears it is hidden", () => {
+  const { pet, tick, said, sent } = rig();
+  tick(10000);
+  sent.length = 0;
+  pet.configure({ thoughts: false, showSlime: false });
+  assert.deepEqual(sent.filter((m) => m.kind === "pet-cfg").map((m) => m.showSlime), [false]);
+  pet.gift({ nick: "аня", giftId: 5655, name: "Rose", count: 1, streakable: false });
+  tick(10000);
+  assert.equal(said().length, 1);
+});

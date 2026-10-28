@@ -18,6 +18,8 @@ import { PHRASES, giftText } from "./pet-phrases.js";
 
 export const PET_DEFAULTS = {
   enabled: true,
+  // false: the window draws only the bubble and the player, no jelly and no jar (Mad, 29.10)
+  showSlime: true,
   name: "Слаймик",
   color: "mint", // mint | pink | violet | sun | sky
   thanks: true,
