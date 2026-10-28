@@ -192,3 +192,10 @@ test("MGI Games starts once, only when installed", async () => {
   assert.equal(gamesExe(env, () => false), null);
   assert.equal(gamesExe({}, () => true), null);
 });
+
+test("a like event counts every tap in it, in both protocol shapes", async () => {
+  const { likes } = await import("../app/core/gifts.js");
+  assert.equal(likes({ count: 15, user: {} }), 15);
+  assert.equal(likes({ likeCount: 7 }), 7);
+  assert.equal(likes({}), 1);
+});

@@ -21,6 +21,15 @@ export function viewer(user) {
 }
 
 /** The fields of a connector GIFT event the app uses. */
+/**
+ * Taps in one like event. Protocol v3 (what tiktok-live-connector 2.x hands
+ * over) carries them in `count`; the old v1 shape used `likeCount`. Reading
+ * only `likeCount` counted every batch of taps as a single like.
+ */
+export function likes(ev) {
+  return Number(ev?.count ?? ev?.likeCount ?? 1) || 1;
+}
+
 export function parseGift(ev) {
   const d = ev?.giftDetails ?? {};
   const streakable = Number(d.giftType ?? ev?.giftType) === 1;

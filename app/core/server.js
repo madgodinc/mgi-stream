@@ -6,7 +6,7 @@ import { WebSocketServer } from "ws";
 import { TikTokLiveConnection, WebcastEvent, ControlEvent } from "tiktok-live-connector";
 import { Speaker } from "./tts.js";
 import { decide } from "./filter.js";
-import { parseGift, viewer } from "./gifts.js";
+import { parseGift, viewer, likes } from "./gifts.js";
 import { GAMES_PATH, readGamesMessage, isGameCommand } from "./games-feed.js";
 
 const MIME = {
@@ -447,7 +447,7 @@ export class StreamServer extends EventEmitter {
       if (!this.giftSeen.fresh(g.key)) return;
       this.onGift(g);
     });
-    conn.on(WebcastEvent.LIKE, (ev) => current() && fresh(ev) && this.onLike(viewer(ev?.user), Number(ev?.likeCount ?? 1) || 1));
+    conn.on(WebcastEvent.LIKE, (ev) => current() && fresh(ev) && this.onLike(viewer(ev?.user), likes(ev)));
     conn.on(WebcastEvent.FOLLOW, (ev) => current() && fresh(ev) && this.onFollow(viewer(ev?.user)));
     conn.on(WebcastEvent.SHARE, (ev) => current() && fresh(ev) && this.onShare(viewer(ev?.user)));
     conn.on(WebcastEvent.STREAM_END, () => current() && this.#retry(cfg, { code: "ended" }));

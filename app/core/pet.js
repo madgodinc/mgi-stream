@@ -195,7 +195,9 @@ export class Pet {
   say(text) {
     if (!this.#on() || !String(text ?? "").trim()) return;
     this.#wake();
-    this.#queue(String(text).slice(0, 140), "happy");
+    // Asked-for lines are answers to someone (a balance, a refund, the help),
+    // so they are kept and read in full rather than trimmed like the chatter.
+    this.#queue(String(text).slice(0, 140), "happy", "speech", true);
   }
 
   /** Replaces the hint list; an empty list ends the hints. */
@@ -235,8 +237,8 @@ export class Pet {
     }
     if (this.thanks.length) return this.#sayThanks();
     if (this.lines.length) {
-      const [text, mood, style] = this.lines.shift();
-      this.#say(text, mood, style);
+      const [text, mood, style, keep] = this.lines.shift();
+      this.#say(text, mood, style, 1, keep);
       this.#pump();
     }
   }
@@ -276,18 +278,22 @@ export class Pet {
     return this.#fill(this.#pick(kind), { nick, gift: what });
   }
 
-  #queue(text, mood, style = "speech") {
-    this.lines.push([text, mood, style]);
-    // Old news is not worth reading out: the bubble keeps only the latest few.
-    if (this.lines.length > 4) this.lines.splice(0, this.lines.length - 4);
+  #queue(text, mood, style = "speech", keep = false) {
+    this.lines.push([text, mood, style, keep]);
+    // Old news is not worth reading out: the bubble keeps only the latest few
+    // of its own lines. Asked-for lines wait their turn, up to a dozen.
+    const own = this.lines.filter((l) => !l[3]);
+    const asked = this.lines.filter((l) => l[3]);
+    const drop = new Set([...own.slice(0, Math.max(0, own.length - 4)), ...asked.slice(0, Math.max(0, asked.length - 12))]);
+    if (drop.size) this.lines = this.lines.filter((l) => !drop.has(l));
     this.#pump();
   }
 
-  #say(text, mood = "happy", style = "speech", stretch = 1) {
+  #say(text, mood = "happy", style = "speech", stretch = 1, keep = false) {
     const backlog = this.thanks.length + this.lines.length;
-    // Long enough to read; shorter when more is waiting.
+    // Long enough to read; shorter when more is waiting, except for answers.
     let ms = Math.min(8000, Math.max(3000, 1800 + text.length * 55)) * stretch;
-    if (backlog > 2) ms = Math.max(2500, ms * 0.6);
+    if (backlog > 2 && !keep) ms = Math.max(2500, ms * 0.6);
     this.busyUntil = this.now() + ms;
     this.send({ kind: "pet", mood, say: { text, ms: Math.round(ms), style } });
   }

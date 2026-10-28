@@ -122,3 +122,15 @@ test("hints from MGI Games take every other idle thought, in order", () => {
   tick(2 * 50000);
   assert.ok(!sent.some((m) => m.say?.text?.startsWith("!")), "an empty list ends the hints");
 });
+
+test("a seven-line answer from MGI Games is shown in full and not rushed", () => {
+  const { pet, tick, sent } = rig();
+  tick(10000);
+  sent.length = 0;
+  const help = ["one", "two", "three", "four", "five", "six", "seven"].map((w) => `${w} ${"x".repeat(60)}`);
+  for (const line of help) pet.say(line);
+  tick(120000);
+  const shown = sent.filter((m) => m.say?.style === "speech");
+  assert.deepEqual(shown.map((m) => m.say.text), help);
+  assert.ok(shown.every((m) => m.say.ms >= 5000), "every line stays long enough to read");
+});
