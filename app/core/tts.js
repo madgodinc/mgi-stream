@@ -38,14 +38,19 @@ const TRIP_AFTER = 2;
 const BENCH_FOR = 10;
 
 // Multilingual voices read Russian (and most languages) and stayed reliable.
+// Edge stopped answering in October 2026 (every voice, both endpoints), so an
+// Edge voice falls back to a voice of the MGI voice server, not to another Edge one.
 const FALLBACK = {
-  "ru-RU-DmitryNeural": "en-US-AndrewMultilingualNeural",
-  "ru-RU-SvetlanaNeural": "en-US-AvaMultilingualNeural",
-  "en-US-AvaNeural": "en-US-AvaMultilingualNeural",
+  "ru-RU-SvetlanaNeural": "sub:xenia",
+  "en-US-AvaNeural": "sub:xenia",
+  "en-US-AvaMultilingualNeural": "sub:xenia",
 };
-export const fallbackFor = (voice) =>
-  FALLBACK[voice] ?? (voice === "en-US-AndrewMultilingualNeural" ? "en-US-AvaMultilingualNeural" : "en-US-AndrewMultilingualNeural");
-
+export const fallbackFor = (voice) => {
+  if (FALLBACK[voice]) return FALLBACK[voice];
+  // Our voices fall back to each other, not to a dead Edge channel.
+  if (isMgi(voice)) return "mgi:52";
+  return "sub:aidar";
+};
 const hex = (bytes) => crypto.randomBytes(bytes).toString("hex");
 
 /** Sec-MS-GEC: SHA-256 of the 5-minute Windows tick plus the client token. */
@@ -86,6 +91,9 @@ export const silence = (ms) => Buffer.concat(Array(Math.round(Math.max(0, ms) / 
  * 16-bit mono WAV with a bare 44-byte header, synthesized on our server.
  */
 export const isMgi = (voice) => /^mgi:\d+$/.test(String(voice));
+/** A Silero speaker of the MGI voice server, as "sub:<speaker>". */
+export const isSub = (voice) => /^sub:[a-z]+$/.test(String(voice));
+export const isEdge = (voice) => /^[a-z]{2,3}-[A-Z]{2}-.+Neural$/.test(String(voice));
 export const MGI_VOICES = [
   { id: "mgi:57", locale: "ru-RU", gender: "Male", name: "Мэд" },
   { id: "mgi:53", locale: "ru-RU", gender: "Male", name: "Артём" },
@@ -150,7 +158,7 @@ function subscriptionRequest(token) {
     const res = await fetch(VOICE_SERVER, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "X-MGI-Product": "tiktok" },
-      body: JSON.stringify({ text, speaker: SUB_VOICES[voice], rate: rateStep(prosody.rate), format: "wav" }),
+      body: JSON.stringify({ text, speaker: SUB_VOICES[voice] ?? voice.slice(4), rate: rateStep(prosody.rate), format: "wav" }),
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) throw new Error(`MGI voice ${res.status}: ${(await res.text()).slice(0, 120)}`);
@@ -226,6 +234,26 @@ export function edgeRequest(voice, prosody, text, { timeoutMs = ATTEMPT_MS, Sock
 }
 
 /**
+ * A voice that is not ours (no mgi gateway, no subscription, no Edge):
+ * the phrase goes to our TTS API on tyan, the free voices live there.
+ */
+export const TTS_API = "https://madgodinc.net/stream/api/tts";
+const TTS_FREE = { "ru-RU-SvetlanaNeural": "aidar", "ru-RU-DmitryNeural": "aidar", "en-US-AvaNeural": "xenia" };
+export function ttsApiRequest(voice) {
+  const speaker = TTS_FREE[voice] ?? "aidar";
+  return async (v, prosody, text, { timeoutMs = MGI_MS } = {}) => {
+    const res = await fetch(TTS_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, speaker, rate: rateStep(prosody.rate), format: "wav" }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) throw new Error(`TTS API ${res.status}: ${(await res.text()).slice(0, 120)}`);
+    return Buffer.from(await res.arrayBuffer());
+  };
+}
+
+/**
  * Turns phrases into audio with one voice (mp3 from Edge, WAV from our
  * gateway). Each attempt gets a fresh request. A
  * phrase its own voice cannot say goes to the fallback voice; one that fails
@@ -239,7 +267,16 @@ export class Speaker {
     // Our voices go to the gateway, Edge ones (and the Edge fallback) to Edge.
     // A test passes one request for everything.
     const mgi = mgiRequest({ url: mgiUrl, key: mgiKey });
-    request ??= (v, ...rest) => (isMgi(v) ? mgi : edgeRequest)(v, ...rest);
+    request ??= (v, ...rest) => {
+      if (isMgi(v)) return mgi(v, ...rest);
+      if (isEdge(v)) return edgeRequest(v, ...rest);
+      if (isSub(v)) {
+        const token = subscription();
+        if (!token) throw new Error("sign in to MGI for the MGI voice server");
+        return subscriptionRequest(token)(v, ...rest);
+      }
+      return ttsApiRequest(v)(v, ...rest);
+    };
     this.voice = voice;
     // The API wants signed SSML units, the UI stores plain numbers.
     const signed = (n, unit) => `${n >= 0 ? "+" : ""}${n}${unit}`;

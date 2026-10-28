@@ -6,6 +6,7 @@ import { WebSocketServer } from "ws";
 import { TikTokLiveConnection, WebcastEvent, ControlEvent } from "tiktok-live-connector";
 import { Speaker } from "./tts.js";
 import { decide } from "./filter.js";
+import { parseGift } from "./gifts.js";
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -19,6 +20,8 @@ const MIME = {
   ".mp3": "audio/mpeg",
 };
 const RETRY_MS = 15000;
+/** How long one connection attempt may take before it counts as failed. */
+const CONNECT_MS = 30000;
 
 /**
  * TikTok's timestamps come from TikTok's clock, not this machine's. A few
@@ -71,20 +74,29 @@ const OFFLINE = /offline|isn'?t\s+online|not\s+online|not\s+live|has\s+ended/i;
  * Owns everything that runs while the app is "on air": the chat connection, the
  * speech queue, and the local HTTP/WebSocket server that feeds the OBS overlay.
  *
- * Emits: status {state, detail}, message {nick, text, spoken}, queue {size, dropped},
+ * Emits: status {state, detail}, message {nick, text, spoken}, queue {size, dropped}, gift {..., fresh},
  * speak {nick, text, audio}, unspoken {nick, text, error}.
  * A status carrying `soft: true` is a hiccup the run survived, not a stop.
  * Speech failures are always soft: a phrase that cannot be voiced is skipped
  * and the chat connection and overlay keep running.
  */
 export class StreamServer extends EventEmitter {
-  /** `fontDir` lets the overlays use the window's fonts; `music` is optional. */
-  constructor(overlayDir, { fontDir = null, music = null } = {}) {
+  /** `fontDir` lets the overlays use the window's fonts; `music`, `pet` and `banks` are optional. */
+  constructor(overlayDir, { fontDir = null, music = null, pet = null, banks = null } = {}) {
     super();
     this.overlayDir = overlayDir;
     this.fontDir = fontDir;
     this.music = music;
+    this.pet = pet;
+    this.banks = banks;
+    if (pet) pet.send = (m) => this.#broadcast(m);
     if (music) this.#wireMusic(music);
+    if (banks) {
+      // The jar by the slime follows every coin; a fill gets its own moment.
+      banks.on("change", () => this.#broadcast(banks.viewerState()));
+      banks.on("fill", (f) => this.#broadcast({ kind: "bank-fill", id: f.bank, name: f.name, nick: f.nick, goal: f.goal }));
+    }
+    this.giftSeen = new RecentIds();
     this.cfg = null;
     this.http = null;
     this.wss = null;
@@ -117,8 +129,14 @@ export class StreamServer extends EventEmitter {
   }
 
   #wireMusic(music) {
-    music.on("play", ({ track }) => this.#broadcast({ kind: "music-play", track, src: `/media/${track.uid}` }));
-    music.on("stop", () => this.#broadcast({ kind: "music-stop" }));
+    music.on("play", ({ track }) => {
+      this.#broadcast({ kind: "music-play", track, src: `/media/${track.uid}` });
+      this.pet?.music(track);
+    });
+    music.on("stop", () => {
+      this.#broadcast({ kind: "music-stop" });
+      this.pet?.music(null);
+    });
     music.on("note", (n) => this.#broadcast({ kind: "music-note", ...n }));
     music.on("song", ({ track }) => this.#broadcast({ kind: "music-song", track }));
     music.on("change", (state) => this.#broadcast({ kind: "music-queue", next: state.queue.slice(0, 3), votes: state.votes }));
@@ -138,6 +156,7 @@ export class StreamServer extends EventEmitter {
     this.busy = false;
     // A fresh run is a fresh room: nothing said before it counts as already heard.
     this.seen = new RecentIds();
+    this.giftSeen = new RecentIds();
     this.speaker = new Speaker(cfg);
     this.speechFailing = false;
 
@@ -145,6 +164,8 @@ export class StreamServer extends EventEmitter {
     this.running = true;
     this.music?.configure(cfg.music);
     this.music?.setLive(true);
+    this.pet?.configure(cfg.pet, cfg.lang);
+    this.pet?.start();
 
     if (mock) {
       this.#startMock();
@@ -169,6 +190,7 @@ export class StreamServer extends EventEmitter {
   async stop() {
     this.running = false;
     this.music?.setLive(false);
+    this.pet?.stop();
     clearInterval(this.mockTimer);
     clearTimeout(this.retryTimer);
     this.mockTimer = null;
@@ -202,6 +224,30 @@ export class StreamServer extends EventEmitter {
     this.cfg = { ...cfg, username: this.cfg.username, port: this.cfg.port };
     if (revoiced) this.speaker = new Speaker(this.cfg);
     this.music?.configure(cfg.music);
+    this.pet?.configure(cfg.pet, cfg.lang);
+    this.#broadcast(this.#audio());
+  }
+
+  /** Levels and devices for the sound helpers: the stream copy and the headphone copy. */
+  #audio() {
+    const c = this.cfg ?? {};
+    const m = c.music ?? {};
+    return {
+      kind: "audio",
+      voice: c.voiceVolume ?? 100,
+      voiceMonitor: c.voiceMonitor ?? 0,
+      music: m.muted ? 0 : (m.volume ?? 70),
+      musicMonitor: m.muted ? 0 : (m.monitor ?? 0),
+      duck: m.duck !== false,
+      playInApp: c.playInApp !== false,
+      streamDevice: c.streamDevice ?? "",
+      monitorDevice: c.monitorDevice ?? "",
+    };
+  }
+
+  /** The app is reading a message out: the music steps back everywhere it plays. */
+  duck(on) {
+    this.#broadcast({ kind: "duck", on: Boolean(on) });
   }
 
   // ── local server for the OBS overlay ────────────────────────────────────────
@@ -226,8 +272,13 @@ export class StreamServer extends EventEmitter {
       this.wss = new WebSocketServer({ server: this.http });
       this.wss.on("connection", (ws) => {
         ws.send(JSON.stringify({ kind: "hello", username: this.cfg.username, voice: this.cfg.voice, lang: this.cfg.lang }));
+        ws.send(JSON.stringify(this.#audio()));
+        if (this.pet) ws.send(JSON.stringify({ kind: "pet-cfg", ...this.pet.cfg }));
+        if (this.banks) ws.send(JSON.stringify(this.banks.viewerState()));
         // An overlay that joins mid-track (OBS scene switch, source refresh) picks the track up.
         const now = this.music?.snapshot();
+        // What comes next, for a window that opens mid-track.
+        if (now) ws.send(JSON.stringify({ kind: "music-queue", next: now.queue.slice(0, 3), votes: now.votes }));
         if (now?.current) {
           ws.send(JSON.stringify({ kind: "music-play", track: now.current, src: `/media/${now.current.uid}` }));
           ws.send(JSON.stringify({ kind: "music-sync", uid: now.current.uid, position: now.position, paused: now.paused, at: Date.now() }));
@@ -332,6 +383,22 @@ export class StreamServer extends EventEmitter {
       if (!this.seen.fresh(String(ev?.common?.msgId ?? ev?.msgId ?? ""))) return;
       if (text) this.onChat(nick, text, ev?.userIdentity ?? {});
     });
+    // What the room does besides talking feeds the slime in the music window.
+    const fresh = (ev) => {
+      const at = Number(ev?.common?.createTime ?? ev?.createTime ?? 0);
+      return !at || at >= liveFrom;
+    };
+    const who = (ev) => ev?.user?.nickname || ev?.user?.uniqueId || "someone";
+    conn.on(WebcastEvent.GIFT, (ev) => {
+      if (!current() || !fresh(ev)) return;
+      const g = parseGift(ev);
+      // A tap the overlapping reconnect delivered twice would count its coins twice.
+      if (!this.giftSeen.fresh(g.key)) return;
+      this.onGift(g);
+    });
+    conn.on(WebcastEvent.LIKE, (ev) => current() && fresh(ev) && this.pet?.like(who(ev), Number(ev?.likeCount ?? 1) || 1));
+    conn.on(WebcastEvent.FOLLOW, (ev) => current() && fresh(ev) && this.pet?.follow(who(ev)));
+    conn.on(WebcastEvent.SHARE, (ev) => current() && fresh(ev) && this.pet?.share(who(ev)));
     conn.on(WebcastEvent.STREAM_END, () => current() && this.#retry(cfg, { code: "ended" }));
     conn.on(ControlEvent.DISCONNECTED, () => current() && this.#retry(cfg, { code: "dropped" }));
     // A failed handshake reports itself twice, as an event and as a rejection.
@@ -345,7 +412,15 @@ export class StreamServer extends EventEmitter {
 
     try {
       this.connecting = true;
-      const state = await conn.connect();
+      // A handshake TikTok never answers would hold the app in "connecting"
+      // for the whole stream, deaf to chat; past the limit it is a failed try.
+      let timer;
+      const state = await Promise.race([
+        conn.connect(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("TikTok did not answer the connection")), CONNECT_MS);
+        }),
+      ]).finally(() => clearTimeout(timer));
       // The run may have been stopped or restarted while the handshake was in
       // flight; the socket it produced belongs to nobody, so it goes.
       if (!current()) return void this.#drop(conn);
@@ -413,13 +488,33 @@ export class StreamServer extends EventEmitter {
       ["Катя", "!сколько ты уже стримишь сегодня", sub],
     ];
     let i = 0;
-    this.mockTimer = setInterval(() => this.onChat(...samples[i++ % samples.length]), 5000);
+    this.mockTimer = setInterval(() => {
+      this.onChat(...samples[i % samples.length]);
+      // Every other tick the room does something else: a rose combo, likes, a follow, a big gift.
+      const extra = i++ % 8;
+      if (extra === 1) for (let n = 1; n <= 7; n++) this.onGift({ nick: "Катя", giftId: 5655, name: "Rose", diamonds: 1, count: n, streakable: true, end: n === 7 });
+      if (extra === 3) this.pet?.like("viewer_01", 80);
+      if (extra === 5) this.pet?.follow("новенький");
+      if (extra === 7) this.onGift({ nick: "mad_god", giftId: 7934, name: "Galaxy", diamonds: 1000, count: 1, streakable: false, end: true });
+    }, 5000);
+  }
+
+  /**
+   * Every gift event enters here (gifts.js parseGift shape), from TikTok, the
+   * demo timer or a test. The slime thanks per streak; the banks count every
+   * new gift at once; `gift` tells the app how many were new, for gift rules.
+   */
+  onGift(g) {
+    this.pet?.gift(g);
+    const fresh = this.banks ? this.banks.gift(g) : g.streakable && !g.end ? 0 : g.count;
+    if (fresh > 0) this.emit("gift", { ...g, fresh });
   }
 
   // ── speech queue ───────────────────────────────────────────────────────────
 
   /** Every chat line enters here, from TikTok, the demo timer or a test. */
   onChat(nick, text, identity = {}) {
+    this.pet?.chat();
     // A music command is an order, not a message to read out.
     const order = this.music?.onChat(nick, text, identity);
     if (order) {

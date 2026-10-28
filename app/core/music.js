@@ -29,6 +29,14 @@ import { rankOf, RANK } from "./filter.js";
 
 export const SERVER = "https://madgodinc.net/music/api";
 
+// A saved queue older than this is a previous stream, not this one.
+const KEEP_MS = 12 * 60 * 60 * 1000;
+const SAVE_POSITION_MS = 3000;
+// What a track carries to disk and back; the rest is rebuilt.
+const KEPT = ["uid", "id", "title", "channel", "duration", "thumbnail", "hasVideo", "nick", "state", "file", "ext", "video", "resume", "wish"];
+// Wishlist tracks in a row that would not download: the wishlist stops.
+const WISH_FAILS = 3;
+
 export const MUSIC_DEFAULTS = {
   enabled: true,
   cmd: "/music",
@@ -48,6 +56,11 @@ export const MUSIC_DEFAULTS = {
   skipVotes: 3, // 0: only the streamer and moderators skip
   songReply: true,
   showNotes: true,
+  // The picture window for TikTok LIVE Studio, which takes no links: green | dark | clear.
+  windowBg: "green",
+  // The music window opens by itself with the stream: it is where the music sounds.
+  autoWindow: true,
+  monitor: 0, // the music in the streamer's headphones, 0-100
   bannedWords: [],
   bannedTracks: [], // YouTube ids
   bannedUsers: [],
@@ -98,10 +111,17 @@ export function refuseTrack(cfg, state, track) {
 let nextUid = 1;
 
 export class Music extends EventEmitter {
-  constructor({ account, workDir, fetchImpl = fetch, server = SERVER }) {
+  /**
+   * With `stateFile` the queue outlives the app: a restart or a stop of the
+   * stream picks up at the same track and second, files kept. Without it
+   * (tests) off air clears everything.
+   */
+  constructor({ account, workDir, fetchImpl = fetch, server = SERVER, stateFile = null }) {
     super();
     this.account = account;
     this.workDir = workDir;
+    this.stateFile = stateFile;
+    this.savedAt = 0;
     this.fetch = fetchImpl;
     this.server = server;
     this.cfg = { ...MUSIC_DEFAULTS };
@@ -113,6 +133,10 @@ export class Music extends EventEmitter {
     this.votes = new Set();
     this.loading = null; // the track being downloaded
     this.live = false;
+    // The streamer's wishlist playing between requests: {list, nick, at, fails},
+    // `at` the id of the wishlist track to take next.
+    this.wish = null;
+    this.wishNext = null; // that track, coming down while something else plays
   }
 
   configure(cfg) {
@@ -125,7 +149,13 @@ export class Music extends EventEmitter {
   /** On air: requests are taken. Off air: everything stops and the files go. */
   setLive(on) {
     this.live = on;
-    if (on) return;
+    if (on) {
+      this.#restore();
+      return this.#pump();
+    }
+    if (this.stateFile) return this.#hold();
+    this.#dropWishNext();
+    this.wish = null;
     for (const t of [...this.queue, ...this.pending, this.current]) if (t) this.#drop(t);
     this.queue = [];
     this.pending = [];
@@ -148,9 +178,11 @@ export class Music extends EventEmitter {
         state: t.state,
         progress: t.progress ?? 0,
         video: Boolean(t.video),
+        wish: Boolean(t.wish),
       };
     return {
       current: view(this.current),
+      wishlist: Boolean(this.wish),
       paused: this.paused,
       position: this.position,
       votes: this.votes.size,
@@ -161,6 +193,80 @@ export class Music extends EventEmitter {
 
   #changed() {
     this.emit("change", this.snapshot());
+    this.#save();
+  }
+
+  // ── keeping the queue across restarts ───────────────────────────────────────
+
+  #save() {
+    if (!this.stateFile) return;
+    const keep = (t) => t && Object.fromEntries(KEPT.map((k) => [k, t[k]]));
+    const state = {
+      at: Date.now(),
+      current: this.current && { ...keep(this.current), position: this.position },
+      paused: this.paused,
+      queue: this.queue.map(keep),
+      pending: this.pending.map(keep),
+    };
+    try {
+      fs.mkdirSync(path.dirname(this.stateFile), { recursive: true });
+      fs.writeFileSync(this.stateFile + ".tmp", JSON.stringify(state));
+      fs.renameSync(this.stateFile + ".tmp", this.stateFile);
+      this.savedAt = state.at;
+    } catch {}
+  }
+
+  #load() {
+    try {
+      const s = JSON.parse(fs.readFileSync(this.stateFile, "utf8"));
+      return Date.now() - s.at < KEEP_MS ? s : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Off air with a state file: playback stops, the queue and files stay. */
+  #hold() {
+    if (this.current) {
+      // The track goes back to the head of the line, to start where it stopped.
+      this.current.state = this.current.file ? "ready" : "queued";
+      this.current.resume = this.position;
+      this.queue.unshift(this.current);
+      this.current = null;
+      this.emit("stop");
+    }
+    this.#dropWishNext();
+    this.loading = null;
+    for (const t of this.queue) if (t.state === "loading") t.state = "queued";
+    this.#changed();
+  }
+
+  /** Back on air, or the first start after a restart: the saved queue returns. */
+  #restore() {
+    if (!this.stateFile || this.current || this.queue.length || this.pending.length) return;
+    const s = this.#load();
+    if (!s) return;
+    const back = (t) => {
+      if (!t) return null;
+      const have = t.file && fs.existsSync(t.file);
+      nextUid = Math.max(nextUid, t.uid + 1);
+      return { ...t, file: have ? t.file : null, state: t.state === "pending" ? "pending" : have ? "ready" : "queued", progress: have ? 1 : 0 };
+    };
+    this.queue = s.queue.map(back);
+    this.pending = s.pending.map(back);
+    const cur = back(s.current);
+    if (cur) {
+      cur.resume = s.current.position || 0;
+      this.queue.unshift(cur);
+    }
+    this.#changed();
+  }
+
+  /** Files of the saved queue stay; anything else in the folder is a leftover. */
+  #keptFiles() {
+    const s = this.stateFile && this.#load();
+    if (!s) return new Set();
+    return new Set([s.current, ...s.queue, ...s.pending].filter((t) => t?.file).map((t) => path.basename(t.file)));
   }
 
   // ── chat ───────────────────────────────────────────────────────────────────
@@ -317,6 +423,7 @@ export class Music extends EventEmitter {
     if (this.current?.uid !== uid) return;
     this.position = position;
     this.paused = paused;
+    if (Date.now() - this.savedAt > SAVE_POSITION_MS) this.#save();
   }
 
   /** Playback of `uid` ended, failed or was skipped: the file goes, the next comes. */
@@ -338,28 +445,104 @@ export class Music extends EventEmitter {
     return t?.file && fs.existsSync(t.file) ? t : null;
   }
 
+  // ── the wishlist ───────────────────────────────────────────────────────────
+
+  /**
+   * Plays the streamer's wishlist whenever no request waits: a viewer's track
+   * still goes next, after the one playing, and the wishlist goes on once the
+   * queue is empty again, round and round. `list` returns the wishlist as it
+   * is now (it changes while it plays); `from` is the id to start at.
+   */
+  playWishlist(list, nick, from = null) {
+    if (!this.live) return false;
+    const items = list();
+    if (!items.length) return false;
+    this.#dropWishNext();
+    const i = Math.max(0, items.findIndex((t) => t.id === from));
+    this.wish = { list, nick, at: items[i].id, fails: 0 };
+    // A wishlist track playing now gives way at once; a viewer's plays out.
+    if (this.current?.wish) this.finished(this.current.uid);
+    else {
+      this.#changed();
+      this.#pump();
+    }
+    return true;
+  }
+
+  stopWishlist() {
+    this.#dropWishNext();
+    this.wish = null;
+    if (this.current?.wish) return this.finished(this.current.uid);
+    this.#changed();
+  }
+
+  /** The next wishlist track to bring down, made once; null while not needed. */
+  #wishTrack() {
+    if (!this.wish) return null;
+    if (this.wishNext) return this.wishNext.state === "queued" ? this.wishNext : null;
+    const items = this.wish.list();
+    if (!items.length) return null;
+    // Gone from the list meanwhile: back to the top.
+    const i = Math.max(0, items.findIndex((t) => t.id === this.wish.at));
+    const w = items[i];
+    this.wish.at = items[(i + 1) % items.length].id;
+    this.wishNext = {
+      uid: nextUid++,
+      id: w.id,
+      title: w.title,
+      channel: w.channel,
+      duration: w.duration,
+      thumbnail: w.thumbnail,
+      // The server looks the video up again and knows better.
+      hasVideo: true,
+      nick: this.wish.nick,
+      state: "queued",
+      wish: true,
+    };
+    return this.wishNext;
+  }
+
+  /** Drops the prepared wishlist track; it is the one taken next time. */
+  #dropWishNext() {
+    const t = this.wishNext;
+    if (!t) return;
+    this.wishNext = null;
+    if (this.wish) this.wish.at = t.id;
+    this.#drop(t);
+  }
+
   // ── downloads ──────────────────────────────────────────────────────────────
+
+  #start(track) {
+    this.current = track;
+    track.state = "playing";
+    const start = track.resume || 0;
+    delete track.resume;
+    this.position = start;
+    this.paused = false;
+    this.votes.clear();
+    if (track.wish && this.wish) this.wish.fails = 0;
+    this.emit("play", { track: { ...this.snapshot().current, ext: track.ext, start } });
+    this.#changed();
+  }
 
   /**
    * Plays the head of the queue once it is here, and keeps one download going
    * for the next track. The order is the streamer's, so a later track that
-   * happens to arrive first still waits its turn.
+   * happens to arrive first still waits its turn. The wishlist fills in only
+   * when nobody's request is in the queue.
    */
   #pump() {
     if (!this.live) return;
     const head = this.queue[0];
-    if (!this.current && head?.state === "ready") {
-      this.queue.shift();
-      this.current = head;
-      head.state = "playing";
-      this.position = 0;
-      this.paused = false;
-      this.votes.clear();
-      this.emit("play", { track: { ...this.snapshot().current, ext: head.ext } });
-      this.#changed();
+    if (!this.current && head?.state === "ready") this.#start(this.queue.shift());
+    else if (!this.current && !this.queue.length && this.wishNext?.state === "ready") {
+      const t = this.wishNext;
+      this.wishNext = null;
+      this.#start(t);
     }
     if (this.loading) return;
-    const next = this.queue.find((t) => t.state === "queued");
+    const next = this.queue.find((t) => t.state === "queued") ?? this.#wishTrack();
     if (!next) return;
     // Only the next two in line come down early; a long queue would otherwise
     // fill the disk with tracks that may be removed before they play.
@@ -370,6 +553,18 @@ export class Music extends EventEmitter {
         next.state = "ready";
       })
       .catch((err) => {
+        if (next.wish) {
+          if (this.wishNext === next) this.wishNext = null;
+          this.#drop(next);
+          // Dropped on purpose is not a failure; real failures in a row stop the wishlist.
+          if (err.message !== "removed" && this.wish && ++this.wish.fails >= WISH_FAILS) this.wish = null;
+          return;
+        }
+        // Cut off by going off air: it waits in the saved queue for the next start.
+        if (!this.live && this.stateFile && this.queue.includes(next)) {
+          next.state = "queued";
+          return;
+        }
         next.state = "failed";
         next.error = err.message;
         const i = this.queue.indexOf(next);
@@ -388,7 +583,9 @@ export class Music extends EventEmitter {
     track.state = "loading";
     this.#changed();
     const video = this.cfg.mode === "video" && track.hasVideo;
-    const start = await this.#api("POST", "/fetch", { id: track.id, video, max_height: this.cfg.maxHeight, max_duration: this.cfg.maxMinutes * 60 });
+    // The streamer's own tracks are not held to the viewers' length limit, only to the server's.
+    const max = track.wish ? undefined : this.cfg.maxMinutes * 60;
+    const start = await this.#api("POST", "/fetch", { id: track.id, video, max_height: this.cfg.maxHeight, max_duration: max });
     if (start.status !== 200) throw new Error(start.data.error || `HTTP ${start.status}`);
     const job = start.data.job;
     track.video = Boolean(start.data.video);
@@ -422,7 +619,7 @@ export class Music extends EventEmitter {
   }
 
   #alive(track) {
-    return this.live && (this.queue.includes(track) || this.current === track);
+    return this.live && (this.queue.includes(track) || this.current === track || this.wishNext === track);
   }
 
   #drop(track) {
@@ -450,6 +647,12 @@ export class Music extends EventEmitter {
 
   /** Leftovers of a crash: nothing in the work folder outlives a run. */
   sweep() {
-    fs.rm(this.workDir, { recursive: true, force: true }, () => {});
+    const kept = this.#keptFiles();
+    if (!kept.size) return fs.rm(this.workDir, { recursive: true, force: true }, () => {});
+    let names = [];
+    try {
+      names = fs.readdirSync(this.workDir);
+    } catch {}
+    for (const n of names) if (!kept.has(n)) fs.rm(path.join(this.workDir, n), { force: true }, () => {});
   }
 }

@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { MUSIC_DEFAULTS } from "./music.js";
+import { PET_DEFAULTS } from "./pet.js";
+import { FX_DEFAULTS, normalizeRules } from "./rules.js";
 
 export const DEFAULTS = {
   lang: "ru",
@@ -38,12 +40,34 @@ export const DEFAULTS = {
   mgiUrl: "https://madgodinc.net/ai/v1",
   mgiKey: "",
 
+  // Every sound goes out twice: to the stream (captured by TikTok LIVE Studio)
+  // and to the streamer's headphones, each with its own level. Devices are
+  // output device names, "" for the system default.
+  voiceVolume: 100,
+  voiceMonitor: 0,
+  streamDevice: "",
+  monitorDevice: "",
+
   // Music requests from the chat (core/music.js), kept as one group.
   music: MUSIC_DEFAULTS,
+
+  // The slime in the music window (core/pet.js), one group like music.
+  pet: PET_DEFAULTS,
+
+  // Piggy banks, gift rules and the action switches (core/rules.js). The
+  // banks' progress is not here: it changes with every coin (banks.js keeps it).
+  banks: [],
+  gifts: [],
+  fx: FX_DEFAULTS,
 };
 
-/** The music group merges key by key, so a newer version's new setting gets its default. */
-const withMusic = (cfg) => ({ ...cfg, music: { ...MUSIC_DEFAULTS, ...(cfg.music ?? {}) } });
+/** The groups merge key by key, so a newer version's new setting gets its default. */
+const withMusic = (cfg) => ({
+  ...cfg,
+  music: { ...MUSIC_DEFAULTS, ...(cfg.music ?? {}) },
+  pet: { ...PET_DEFAULTS, ...(cfg.pet ?? {}) },
+  ...normalizeRules(cfg),
+});
 
 /**
  * The connector wants a bare uniqueId, but people paste what they have: `@ник`,
@@ -63,12 +87,12 @@ export function normalizeUsername(raw) {
 
 export function load(dir) {
   const file = path.join(dir, "config.json");
-  if (!fs.existsSync(file)) return { ...DEFAULTS };
+  if (!fs.existsSync(file)) return withMusic({ ...DEFAULTS });
   try {
     return withMusic({ ...DEFAULTS, ...JSON.parse(fs.readFileSync(file, "utf8")) });
   } catch {
     // A hand-edited file with a stray comma should not stop the app from starting.
-    return { ...DEFAULTS };
+    return withMusic({ ...DEFAULTS });
   }
 }
 
@@ -77,7 +101,12 @@ export function save(dir, cfg) {
   const clean = {};
   for (const key of Object.keys(DEFAULTS)) clean[key] = cfg?.[key] ?? DEFAULTS[key];
   clean.username = normalizeUsername(clean.username);
-  clean.music = withMusic(clean).music;
+  const groups = withMusic(clean);
+  clean.music = groups.music;
+  clean.pet = groups.pet;
+  clean.banks = groups.banks;
+  clean.gifts = groups.gifts;
+  clean.fx = groups.fx;
   fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify(clean, null, 2));
   return clean;
 }

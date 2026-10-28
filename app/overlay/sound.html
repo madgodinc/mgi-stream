@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>mgi-stream наушники</title>
+</head>
+<body style="background:#000">
+<script type="module">
+  // The hidden headphone window: the streamer hears the chat and the music here,
+  // at their own levels, on their own device, and none of it reaches the stream.
+  import { channel } from "/channel.js";
+  const onMessage = channel({ role: "monitor" });
+  function connect() {
+    const ws = new WebSocket("ws://" + location.host);
+    ws.onmessage = (e) => onMessage(JSON.parse(e.data));
+    ws.onclose = () => setTimeout(connect, 2000);
+  }
+  connect();
+</script>
+</body>
+</html>

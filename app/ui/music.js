@@ -1,9 +1,10 @@
 // The Музыка tab: the MGI subscription that pays for requests, the request
 // rules, and the deck where the streamer sees and steers the queue.
 //
-// This window is the player. Its <video> makes the sound (OBS captures the
-// program as its own audio line) and reports the position; the overlay in OBS
-// shows the same file muted and follows that position.
+// This window keeps the time. Its <video> runs muted and reports the position;
+// the music window (a process of its own, see app/helper.js) plays the sound to
+// the stream and the hidden headphone window plays it to the streamer, both
+// following that position.
 
 import { tr } from "./i18n.js";
 
@@ -15,10 +16,12 @@ let account = { signedIn: false, ok: false, reason: "signed_out", price: 300 };
 let state = { current: null, queue: [], pending: [] };
 let playing = null; // the track this window is playing
 let ducked = false;
+let wishes = []; // the streamer's wishlist, newest first
 
 const player = $("mplayer");
 const CHECKS = ["enabled", "approve", "songReply", "showNotes", "duck"];
 const SLIDERS = {
+  monitor: (v) => `${v}%`,
   skipVotes: (v) => (v ? String(v) : tr("m.off")),
   maxMinutes: (v) => `${v} ${tr("m.min")}`,
   perViewer: (v) => String(v),
@@ -47,12 +50,15 @@ function paint() {
     fill($("m-" + k));
     $(`m-${k}Val`).textContent = SLIDERS[k](Number(m[k]));
   }
-  for (const id of ["audience", "mode", "maxHeight"]) {
+  for (const id of ["audience", "mode", "maxHeight", "windowBg"]) {
     for (const b of $("m-" + id).children) b.classList.toggle("sel", b.dataset.v === String(m[id]));
   }
   $("m-maxHeight").style.display = m.mode === "video" ? "" : "none";
-  $("m-volume").value = m.volume;
-  fill($("m-volume"));
+  for (const id of ["m-volume", "m-stream"]) {
+    $(id).value = m.volume;
+    fill($(id));
+  }
+  $("m-streamVal").textContent = `${m.volume}%`;
   $("m-mute").classList.toggle("on", m.muted);
   volume();
 }
@@ -87,22 +93,28 @@ function wire() {
       touched();
     };
   }
-  for (const id of ["audience", "mode", "maxHeight"]) {
+  for (const id of ["audience", "mode", "maxHeight", "windowBg"]) {
     for (const b of $("m-" + id).children) {
       b.onclick = () => {
         m()[id] = id === "maxHeight" ? Number(b.dataset.v) : b.dataset.v;
         for (const s of $("m-" + id).children) s.classList.toggle("sel", s === b);
         $("m-maxHeight").style.display = m().mode === "video" ? "" : "none";
+        if (id === "windowBg") window.mgi.music.windowBg(b.dataset.v);
         touched();
       };
     }
   }
-  $("m-volume").oninput = () => {
-    m().volume = Number($("m-volume").value);
-    fill($("m-volume"));
-    volume();
-    touched();
-  };
+  for (const id of ["m-volume", "m-stream"]) {
+    $(id).oninput = () => {
+      m().volume = Number($(id).value);
+      for (const other of ["m-volume", "m-stream"]) {
+        $(other).value = m().volume;
+        fill($(other));
+      }
+      $("m-streamVal").textContent = `${m().volume}%`;
+      touched();
+    };
+  }
   $("m-mute").onclick = () => {
     m().muted = !m().muted;
     $("m-mute").classList.toggle("on", m().muted);
@@ -110,6 +122,15 @@ function wire() {
     touched();
   };
   $("m-copy").onclick = () => window.mgi.music.copyUrl();
+  $("m-window").onclick = async () => {
+    const res = await window.mgi.music.window(m().windowBg);
+    if (res && !res.ok) $("m-url").textContent = tr("notRunning");
+  };
+  window.mgi.on("music:window", (open) => {
+    windowOpen = open;
+    $("m-window").textContent = tr(open ? "m.windowClose" : "m.windowOpen");
+    $("pet-window").textContent = $("m-window").textContent;
+  });
 
   $("m-play").onclick = () => {
     if (!playing) return;
@@ -117,6 +138,8 @@ function wire() {
     else player.pause();
   };
   $("m-skip").onclick = () => window.mgi.music.control({ action: "skip" });
+  $("m-wish").onclick = () => wish(state.current?.uid);
+  $("m-wishPlay").onclick = () => (state.wishlist ? window.mgi.wishlist.stop() : playWishes());
   $("m-banTrack").onclick = () => ban(state.current?.uid, "track");
   $("m-banUser").onclick = () => ban(state.current?.uid, "user");
   $("seek").onclick = (e) => {
@@ -137,25 +160,79 @@ async function ban(uid, what) {
   }
 }
 
+// ── the wishlist ─────────────────────────────────────────────────────────────
+
+const wished = (id) => wishes.some((w) => w.id === id);
+
+async function wish(uid) {
+  if (!uid) return;
+  wishes = (await window.mgi.wishlist.add(uid)) || [];
+  // The whole deck: the queue rows lose their «в вишлист» at once.
+  render(state);
+}
+
+async function playWishes(id = null) {
+  const r = await window.mgi.wishlist.play(id, tr("m.wishNick"));
+  if (r?.error) logLine({ nick: tr("m.wishNick"), title: "", ok: false, reason: "offAir" });
+}
+
+function renderWishes(list) {
+  wishes = list || [];
+  $("wishList").replaceChildren(...wishes.map(wishRow));
+  $("wishEmpty").textContent = wishes.length ? "" : tr("m.wishEmpty");
+  const c = state.current;
+  $("m-wish").textContent = tr(c && wished(c.id) ? "m.wished" : "m.wish");
+  $("m-wish").classList.toggle("on", Boolean(c && wished(c.id)));
+  $("m-wishPlay").textContent = tr(state.wishlist ? "m.wishStop" : "m.wishPlay");
+  $("m-wishPlay").classList.toggle("on", Boolean(state.wishlist));
+  $("m-wishPlay").disabled = !wishes.length && !state.wishlist;
+}
+
+function wishRow(w, i) {
+  const li = document.createElement("li");
+  const now = state.current?.wish && state.current.id === w.id;
+  li.className = now ? "track playing" : "track";
+  li.innerHTML = `<span class="n">${i + 1}</span><img alt="" src="${esc(w.thumbnail)}">
+    <div class="t"><b>${esc(w.title)}</b><span>${esc(w.channel || w.nick)} · ${clock(w.duration)}</span></div>
+    <div class="acts"></div>`;
+  const acts = li.querySelector(".acts");
+  const btn = (label, fn, cls = "") => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    if (cls) b.className = cls;
+    b.onclick = fn;
+    acts.append(b);
+  };
+  if (!now) btn(tr("m.wishPlayOne"), () => playWishes(w.id), "yes");
+  btn(tr("m.wishOpen"), () => window.mgi.wishlist.open(w.id));
+  btn(tr("m.remove"), async () => {
+    wishes = (await window.mgi.wishlist.remove(w.id)) || [];
+    render(state);
+  });
+  return li;
+}
+
 // ── playback ─────────────────────────────────────────────────────────────────
 
 function volume() {
   const m = cfg.music;
-  const v = m.muted ? 0 : m.volume / 100;
-  player.volume = ducked && m.duck ? v * 0.3 : v;
+  // The sound is the music window's; this player only keeps the time.
+  player.muted = true;
   $("m-mute").textContent = m.muted ? tr("m.unmute") : tr("m.mute");
 }
 
 /** Chat speech in this window lowers the music while it talks. */
 export function duck(on) {
+  if (ducked === on) return;
   ducked = on;
-  volume();
+  window.mgi.music.duck(on);
 }
 
 function play({ track, url }) {
   playing = track;
   player.src = url;
-  player.currentTime = 0;
+  // A track cut off by a restart goes on from where it was.
+  player.currentTime = track.start || 0;
   volume();
   player.play().catch(() => window.mgi.music.ended(track.uid));
 }
@@ -216,6 +293,7 @@ function row(t, i, kind) {
   } else {
     btn(tr("m.remove"), () => window.mgi.music.control({ action: "remove", uid: t.uid }));
   }
+  if (!wished(t.id)) btn(tr("m.wishShort"), () => wish(t.uid));
   btn(tr("m.banTrackShort"), () => ban(t.uid, "track"));
   btn(tr("m.banUserShort"), () => ban(t.uid, "user"));
 
@@ -258,6 +336,7 @@ function render(s) {
   $("pendingList").replaceChildren(...s.pending.map((t, i) => row(t, i, "pending")));
   $("queueList").replaceChildren(...s.queue.map((t, i) => row(t, i, "queue")));
   $("queueEmpty").textContent = s.queue.length ? "" : tr("m.queueEmpty", cfg?.music.cmd || "/music");
+  renderWishes(wishes);
 }
 
 function logLine({ nick, title, ok, reason, arg }) {
@@ -327,12 +406,16 @@ function renderAccount() {
 
 // ── outside ──────────────────────────────────────────────────────────────────
 
+let windowOpen = false;
+
 export function setUrl(url) {
   $("m-url").textContent = url || tr("notRunning");
 }
 
 export function relabel() {
   if (!cfg) return;
+  $("m-window").textContent = tr(windowOpen ? "m.windowClose" : "m.windowOpen");
+  $("pet-window").textContent = $("m-window").textContent;
   paint();
   render(state);
   renderAccount();
@@ -353,6 +436,7 @@ export async function initMusic(opts) {
   window.mgi.on("music:play", play);
   window.mgi.on("music:stop", stopped);
   window.mgi.on("music:request", logLine);
+  wishes = await window.mgi.wishlist.get();
   render(await window.mgi.music.state());
   relabel();
   // The first answer waits for the hardware ids (a PowerShell call, a few

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Озвучка</title>
+<style>
+  @font-face { font-family: 'Manrope'; font-weight: 600; src: url(/fonts/Manrope-600-cyrillic.woff2) format('woff2'); unicode-range: U+0400-045F, U+0490-0491; }
+  @font-face { font-family: 'Manrope'; font-weight: 600; src: url(/fonts/Manrope-600-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+2000-206F; }
+  html, body { margin: 0; height: 100%; background: #0b0a09; color: #f7f3ff; font: 600 14px/1.4 'Manrope', sans-serif; }
+  body { display: grid; place-content: center; gap: 8px; padding: 18px; text-align: center; }
+  b { font-size: 17px; }
+  p { margin: 0; color: #c4bdd8; }
+  #now { color: #25f4ee; min-height: 1.4em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
+</style>
+</head>
+<body>
+  <b>Озвучка чата</b>
+  <p>Это окно передаёт голос в TikTok LIVE Studio. Его можно свернуть, но не закрывайте.</p>
+  <div id="now"></div>
+<script type="module">
+  // «Озвучка»: plays the chat voice to the stream, apart from the music and the app.
+  import { channel } from "/channel.js";
+  const onMessage = channel({ role: "voice" });
+  function connect() {
+    const ws = new WebSocket("ws://" + location.host);
+    ws.onmessage = (e) => {
+      const m = JSON.parse(e.data);
+      onMessage(m);
+      if (m.kind === "speak") document.getElementById("now").textContent = `${m.nick}: ${m.text}`;
+    };
+    ws.onclose = () => setTimeout(connect, 2000);
+  }
+  connect();
+</script>
+</body>
+</html>

@@ -2,8 +2,8 @@
 <html lang="ru" data-tab="voice">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; media-src 'self' data: http://127.0.0.1:*; img-src 'self' data: https://i.ytimg.com">
-<title>mgi-stream</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; media-src 'self' data: file: http://127.0.0.1:*; img-src 'self' data: file: https://i.ytimg.com">
+<title>Приложение</title>
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="themes/themes.css">
@@ -30,6 +30,9 @@
     <button type="button" class="tab" data-tab="who"><svg class="tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21a7 7 0 0 1 14 0M17 11a3 3 0 1 0 0-6M22 21a6 6 0 0 0-4-5.6"/></svg><span data-t="tabWho"></span></button>
     <button type="button" class="tab" data-tab="reading"><svg class="tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-t="tabReading"></span></button>
     <button type="button" class="tab" data-tab="music"><svg class="tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/></svg><span data-t="tabMusic"></span></button>
+    <button type="button" class="tab" data-tab="sound"><svg class="tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg><span data-t="tabSound"></span></button>
+    <button type="button" class="tab" data-tab="pet"><svg class="tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c-4 4-7 7.5-7 11a7 7 0 0 0 14 0c0-3.5-3-7-7-11zM9.5 13.5v.5M14.5 13.5v.5M10 17c1.2.8 2.8.8 4 0"/></svg><span data-t="tabPet"></span></button>
+    <button type="button" class="tab" data-tab="banks"><svg class="tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8M9 3v3c-2.5 1-4 3-4 6v6a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-6c0-3-1.5-5-4-6V3M8 15h8"/></svg><span data-t="tabBanks"></span></button>
     <button type="button" class="tab" data-tab="obs"><svg class="tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18v12H3zM8 21h8M12 17v4"/></svg><span data-t="tabObs"></span></button>
   </nav>
   <div class="bar__right">
@@ -216,6 +219,49 @@
         <span class="url" id="m-url"></span>
         <button class="secondary small" id="m-copy" data-t="copy"></button>
       </div>
+      <h2 data-t="m.studioTitle"></h2>
+      <p class="hint" data-t="m.studioHowTo"></p>
+      <div class="segments" id="m-windowBg">
+        <button data-v="green" data-t="m.windowGreen"></button>
+        <button data-v="dark" data-t="m.windowDark"></button>
+        <button data-v="clear" data-t="m.windowClear"></button>
+      </div>
+      <div class="inline">
+        <button class="secondary small" id="m-window" data-t="m.windowOpen"></button>
+      </div>
+    </section>
+
+    <section class="section" data-pane="pet">
+      <h2 data-t="pet.title"></h2>
+      <p class="hint" data-t="pet.howTo"></p>
+      <div class="check" id="pet-enabled"><i></i><span data-t="pet.enabled"></span></div>
+      <div class="field">
+        <label class="mono" for="pet-name" data-t="pet.name"></label>
+        <input type="text" id="pet-name" maxlength="24" spellcheck="false">
+      </div>
+      <div class="field">
+        <span class="mono" data-t="pet.color"></span>
+        <div class="segments" id="pet-color">
+          <button data-v="mint" data-t="pet.colors.mint"></button>
+          <button data-v="pink" data-t="pet.colors.pink"></button>
+          <button data-v="violet" data-t="pet.colors.violet"></button>
+          <button data-v="sun" data-t="pet.colors.sun"></button>
+          <button data-v="sky" data-t="pet.colors.sky"></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" data-pane="pet">
+      <h2 data-t="pet.reacts"></h2>
+      <div class="check" id="pet-thanks"><i></i><span data-t="pet.thanks"></span></div>
+      <div class="check" id="pet-likes"><i></i><span data-t="pet.likes"></span></div>
+      <div class="check" id="pet-follows"><i></i><span data-t="pet.follows"></span></div>
+      <div class="check" id="pet-thoughts"><i></i><span data-t="pet.thoughts"></span></div>
+      <div class="inline">
+        <button class="secondary small" id="pet-test" data-t="pet.test"></button>
+        <button class="secondary small" id="pet-window" data-t="m.windowOpen"></button>
+      </div>
+      <p class="hint" id="pet-note"></p>
     </section>
 
     <section class="section" data-pane="music">
@@ -234,10 +280,69 @@
       </div>
     </section>
 
+    <section class="section" data-pane="banks">
+      <h2 data-t="fx.banksTitle"></h2>
+      <p class="hint" data-t="fx.banksHint"></p>
+      <ol class="bk-line" id="bk-line"></ol>
+      <button class="secondary small" id="bk-add" data-t="fx.addBank"></button>
+    </section>
+
+    <section class="section" data-pane="banks">
+      <h2 data-t="fx.giftsTitle"></h2>
+      <p class="hint" data-t="fx.giftsHint"></p>
+      <ol class="gr-list" id="gr-list"></ol>
+      <button class="secondary small" id="gr-add" data-t="fx.addGift"></button>
+    </section>
+
+    <section class="section" data-pane="banks">
+      <h2 data-t="fx.killTitle"></h2>
+      <p class="hint" data-t="fx.killHint"></p>
+      <button class="kill" id="fx-kill"><span data-t="fx.killButton"></span><kbd id="fx-killKeyCap"></kbd></button>
+      <div class="field">
+        <span class="mono" data-t="fx.killKey"></span>
+        <button class="keycap" id="fx-killKey"></button>
+        <p class="hint warn" id="fx-killNote"></p>
+      </div>
+      <div class="check" id="fx-enabled"><i></i><span data-t="fx.enabled"></span></div>
+      <p class="hint" id="fx-enabledNote"></p>
+      <p class="hint warn" id="fx-inputNote"></p>
+      <div class="mono label" data-t="fx.logTitle"></div>
+      <ol class="fx-log" id="fx-log"></ol>
+    </section>
+
     <section class="section" data-pane="obs">
       <h2 data-t="themeTitle"></h2>
       <div id="themePick"></div>
       <p class="hint" data-t="themeHint"></p>
+    </section>
+
+    <section class="section" data-pane="sound">
+      <h2 data-t="soundTitle"></h2>
+      <p class="hint" data-t="soundHowTo"></p>
+      <div class="field">
+        <label class="mono" for="streamDevice" data-t="streamDevice"></label>
+        <select id="streamDevice"></select>
+      </div>
+      <div class="field">
+        <label class="mono" for="monitorDevice" data-t="monitorDevice"></label>
+        <select id="monitorDevice"></select>
+      </div>
+      <div class="slider">
+        <div class="head mono"><span data-t="voiceVolume"></span><b id="voiceVolumeVal"></b></div>
+        <input type="range" id="voiceVolume" min="0" max="100" step="1">
+      </div>
+      <div class="slider">
+        <div class="head mono"><span data-t="voiceMonitor"></span><b id="voiceMonitorVal"></b></div>
+        <input type="range" id="voiceMonitor" min="0" max="100" step="1">
+      </div>
+      <div class="slider">
+        <div class="head mono"><span data-t="m.stream"></span><b id="m-streamVal"></b></div>
+        <input type="range" id="m-stream" min="0" max="100" step="1">
+      </div>
+      <div class="slider">
+        <div class="head mono"><span data-t="m.monitor"></span><b id="m-monitorVal"></b></div>
+        <input type="range" id="m-monitor" min="0" max="100" step="1">
+      </div>
     </section>
 
     <section class="section" data-pane="obs">
@@ -276,6 +381,7 @@
         <button class="secondary small" id="m-mute" data-t="m.mute"></button>
         <input type="range" id="m-volume" min="0" max="100" step="1">
         <span class="spacer"></span>
+        <button class="secondary small" id="m-wish" data-t="m.wish"></button>
         <button class="secondary small" id="m-banTrack" data-t="m.banTrack"></button>
         <button class="secondary small" id="m-banUser" data-t="m.banUser"></button>
       </div>
@@ -288,10 +394,18 @@
       <div class="mono label" data-t="m.queue"></div>
       <ol id="queueList"></ol>
       <div id="queueEmpty" class="hint"></div>
+      <div id="wishHead">
+        <div class="mono label" data-t="m.wishlist"></div>
+        <button class="secondary small" id="m-wishPlay" data-t="m.wishPlay"></button>
+      </div>
+      <ol id="wishList"></ol>
+      <div id="wishEmpty" class="hint"></div>
       <div class="mono label" data-t="m.log"></div>
       <ol id="log"></ol>
     </div>
   </section>
+
+  <section class="rules" id="rules"></section>
 
   <section class="feed">
     <h2 data-t="chatTitle"></h2>

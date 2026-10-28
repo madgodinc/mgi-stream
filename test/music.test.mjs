@@ -218,3 +218,97 @@ test("the local server: commands are not read out, files come with Range, the ov
   await s.stop();
   assert.equal(m.current, null, "stopping the air stops the music");
 });
+
+test("with a state file the queue outlives off air and a restart, at the same second", async () => {
+  const srv = fakeServer();
+  const dir = workDir();
+  const stateFile = path.join(dir, "..", `queue-${Date.now()}.json`);
+  const m = new Music({ account: okAccount, workDir: dir, fetchImpl: srv.fetchImpl, stateFile });
+  m.setLive(true);
+  m.onChat("kate", "/music one", {});
+  m.onChat("bob", "/music two", {});
+  await settle();
+  assert.ok(m.current);
+  m.progress(m.current.uid, 42, false);
+  const first = m.current.id;
+  m.setLive(false);
+  await settle();
+  assert.equal(m.current, null);
+  assert.ok(fs.readdirSync(dir).length >= 1);
+
+  // A new process: the folder is swept, the saved files stay.
+  const again = new Music({ account: okAccount, workDir: dir, fetchImpl: srv.fetchImpl, stateFile });
+  again.sweep();
+  await settle();
+  let played = null;
+  again.on("play", ({ track }) => (played = track));
+  again.setLive(true);
+  await settle();
+  assert.equal(played.id, first);
+  assert.equal(played.start, 42);
+  assert.equal(again.queue.length + (again.current ? 1 : 0), 2);
+  fs.rmSync(stateFile, { force: true });
+});
+
+test("the wishlist plays while nobody orders; a request goes after the track playing, then the wishlist goes on", async () => {
+  const srv = fakeServer();
+  const m = new Music({ account: okAccount, workDir: workDir(), fetchImpl: srv.fetchImpl });
+  m.configure({});
+  m.setLive(true);
+  const played = [];
+  m.on("play", ({ track }) => played.push(track.title));
+  const wishes = [
+    { id: "wishAAAAAAA", title: "A", channel: "", duration: 900 },
+    { id: "wishBBBBBBB", title: "B", channel: "", duration: 200 },
+  ];
+
+  assert.equal(m.playWishlist(() => wishes, "вишлист"), true);
+  await settle();
+  assert.deepEqual(played, ["A"]);
+  assert.equal(m.snapshot().wishlist, true);
+  assert.equal(m.snapshot().current.wish, true);
+  const fetchA = srv.calls.find((c) => c.route === "/fetch");
+  assert.equal(fetchA.body.max_duration, undefined, "own tracks are not held to the viewers' limit");
+
+  m.onChat("kate", "/music numb", {});
+  await settle();
+  assert.deepEqual(played, ["A"], "a request waits for the track playing");
+  m.finished(m.current.uid);
+  await settle();
+  assert.deepEqual(played, ["A", "Song numb"]);
+  m.finished(m.current.uid);
+  await settle();
+  assert.deepEqual(played, ["A", "Song numb", "B"], "the wishlist goes on where it was");
+  m.finished(m.current.uid);
+  await settle();
+  assert.deepEqual(played, ["A", "Song numb", "B", "A"], "round and round");
+  m.setLive(false);
+});
+
+test("a wishlist track starts at once over another wishlist track, and stop ends the wishlist", async () => {
+  const srv = fakeServer();
+  const m = new Music({ account: okAccount, workDir: workDir(), fetchImpl: srv.fetchImpl });
+  m.configure({});
+  m.setLive(true);
+  const played = [];
+  m.on("play", ({ track }) => played.push(track.title));
+  const wishes = ["A", "B", "C"].map((t) => ({ id: "wish" + t.repeat(7), title: t }));
+
+  m.playWishlist(() => wishes, "вишлист");
+  await settle();
+  m.playWishlist(() => wishes, "вишлист", "wishCCCCCCC");
+  await settle();
+  assert.deepEqual(played, ["A", "C"]);
+
+  m.stopWishlist();
+  await settle();
+  assert.equal(m.current, null);
+  assert.equal(m.snapshot().wishlist, false);
+  assert.equal(m.wishNext, null);
+  m.setLive(false);
+});
+
+test("off air the wishlist cannot start", () => {
+  const m = new Music({ account: okAccount, workDir: workDir(), fetchImpl: fakeServer().fetchImpl });
+  assert.equal(m.playWishlist(() => [{ id: "wishAAAAAAA", title: "A" }], "вишлист"), false);
+});

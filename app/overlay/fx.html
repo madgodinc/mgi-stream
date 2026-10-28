@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>mgi-stream effects</title>
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  #veil { position: fixed; inset: 0; opacity: 0; background: #000; will-change: opacity; }
+  /* One box over the whole monitor per item; flex puts the item where the step says. */
+  .spot { position: fixed; inset: 0; display: flex; padding: 2.5vmin; box-sizing: border-box; pointer-events: none; }
+  .media {
+    display: block; height: auto; max-height: 100%; object-fit: contain;
+    opacity: 0; transform: scale(.94); transition: opacity .25s ease, transform .25s cubic-bezier(.2, .9, .3, 1.2);
+  }
+  .media.in { opacity: 1; transform: none; }
+  .media.out { opacity: 0; transform: scale(.97); transition-duration: .3s; }
+</style>
+</head>
+<body>
+<div id="veil"></div>
+<script>
+const veil = document.getElementById("veil");
+const PLACE = {
+  tl: ["flex-start", "flex-start"], tc: ["center", "flex-start"], tr: ["flex-end", "flex-start"],
+  ml: ["flex-start", "center"], c: ["center", "center"], mr: ["flex-end", "center"],
+  bl: ["flex-start", "flex-end"], bc: ["center", "flex-end"], br: ["flex-end", "flex-end"],
+};
+const MAX_MS = 120000;
+const live = new Map();
+
+function finish(id, report = true) {
+  const item = live.get(id);
+  if (!item) return;
+  live.delete(id);
+  clearTimeout(item.timer);
+  item.el.classList.add("out");
+  setTimeout(() => {
+    if (item.el.tagName === "VIDEO") item.el.removeAttribute("src");
+    item.box.remove();
+    if (report) window.fx.done(id);
+  }, 320);
+}
+
+function show(m) {
+  const box = document.createElement("div");
+  box.className = "spot";
+  const [jx, jy] = PLACE[m.pos] ?? PLACE.c;
+  box.style.justifyContent = jx;
+  box.style.alignItems = jy;
+  const video = /\.(mp4|webm|mov|m4v)$/i.test(m.url);
+  const el = document.createElement(video ? "video" : "img");
+  el.className = "media";
+  el.style.width = `${m.size}%`;
+  const item = { el, box, timer: 0 };
+  live.set(m.id, item);
+  const done = () => finish(m.id);
+  const until = video && !(m.seconds > 0) ? MAX_MS : Math.min(MAX_MS, m.seconds * 1000);
+  const start = () => {
+    el.classList.add("in");
+    item.timer = setTimeout(done, until);
+  };
+  el.addEventListener("error", done, { once: true });
+  if (video) {
+    el.playsInline = true;
+    el.volume = m.volume / 100;
+    el.muted = m.volume === 0;
+    // With a set time a short clip loops to fill it; without one it plays once.
+    el.loop = m.seconds > 0;
+    el.addEventListener("ended", done, { once: true });
+    el.addEventListener("playing", start, { once: true });
+    el.src = m.url;
+    el.play().catch(() => {
+      el.muted = true;
+      el.play().catch(done);
+    });
+  } else {
+    el.addEventListener("load", start, { once: true });
+    el.src = m.url;
+  }
+  box.appendChild(el);
+  document.body.appendChild(box);
+}
+
+window.fx.on((m) => {
+  if (m.type === "dim") {
+    veil.style.transition = `opacity ${m.fade}ms ease`;
+    if (m.level > 0) veil.style.background = m.color;
+    veil.style.opacity = String(m.level / 100);
+  } else if (m.type === "media") show(m);
+  else if (m.type === "clear") for (const id of [...live.keys()]) finish(id, false);
+});
+</script>
+</body>
+</html>

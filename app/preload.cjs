@@ -35,6 +35,32 @@ contextBridge.exposeInMainWorld("mgi", {
     progress: (p) => ipcRenderer.send("music:progress", p),
     ended: (uid) => ipcRenderer.send("music:ended", { uid }),
     copyUrl: () => ipcRenderer.invoke("music:copyUrl"),
+    window: (bg) => ipcRenderer.invoke("music:window", bg),
+    windowBg: (bg) => ipcRenderer.send("music:windowBg", bg),
+    duck: (on) => ipcRenderer.send("music:duck", on),
+  },
+  pet: {
+    test: () => ipcRenderer.invoke("pet:test"),
+  },
+  banks: {
+    state: () => ipcRenderer.invoke("banks:state"),
+    reset: (id) => ipcRenderer.invoke("banks:reset", id),
+    focus: (id) => ipcRenderer.invoke("banks:focus", id),
+    test: (id) => ipcRenderer.invoke("banks:test", id),
+    testGift: (id) => ipcRenderer.invoke("gifts:test", id),
+  },
+  fx: {
+    kill: () => ipcRenderer.invoke("fx:kill"),
+    pick: (kind) => ipcRenderer.invoke("fx:pick", kind),
+    mediaUrl: (file) => ipcRenderer.invoke("fx:mediaUrl", file),
+  },
+  wishlist: {
+    get: () => ipcRenderer.invoke("wishlist:get"),
+    add: (uid) => ipcRenderer.invoke("wishlist:add", uid),
+    remove: (id) => ipcRenderer.invoke("wishlist:remove", id),
+    play: (id, nick) => ipcRenderer.invoke("wishlist:play", { id, nick }),
+    stop: () => ipcRenderer.invoke("wishlist:stop"),
+    open: (id) => ipcRenderer.invoke("wishlist:open", id),
   },
   on: (channel, fn) => ipcRenderer.on(channel, (_e, payload) => fn(payload)),
 });

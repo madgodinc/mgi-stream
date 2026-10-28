@@ -16,6 +16,16 @@ publish:
 files:
   - app/**/*
   - "!**/*.map"
+  # koffi (SendInput for the bank actions) ships every platform's binary and
+  # its sources; the Windows x64 build is the only one the app loads.
+  - "!node_modules/koffi/src/**"
+  - "!node_modules/koffi/vendor/**"
+  - "!node_modules/koffi/doc/**"
+  - "!node_modules/koffi/build/koffi/{darwin,freebsd,linux,openbsd,musl,win32_ia32,win32_arm64}*/**"
+
+# The FFI binary cannot load from inside the asar.
+asarUnpack:
+  - node_modules/koffi/build/koffi/win32_x64/**
 
 win:
   icon: build/icon.ico

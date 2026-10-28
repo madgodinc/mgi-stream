@@ -1,5 +1,7 @@
 import { setLang, tr, apply } from "./i18n.js";
 import { initMusic, relabel as relabelMusic, setUrl as setMusicUrl, duck } from "./music.js";
+import { initPet, relabel as relabelPet } from "./pet.js";
+import { initBanks, relabel as relabelBanks } from "./banks.js";
 import { initUpdates, relabel as relabelUpdates } from "./updates.js";
 import { askTheme, initTheme, mountThemeButton, mountThemePicker } from "./themes/theme.js";
 
@@ -20,6 +22,8 @@ const SLIDERS = {
   maxQueue: (v) => String(v),
   nickRate: (v) => `${v >= 0 ? "+" : ""}${v}%`,
   nickPause: (v) => `${v} ms`,
+  voiceVolume: (v) => `${v}%`,
+  voiceMonitor: (v) => `${v}%`,
 };
 
 let cfg = null;
@@ -52,14 +56,14 @@ addEventListener("blur", away);
 document.addEventListener("visibilitychange", away);
 away();
 
-const TABS = ["voice", "who", "reading", "music", "obs"];
+const TABS = ["voice", "who", "reading", "music", "sound", "pet", "banks", "obs"];
 let tab = "voice";
 function setTab(next) {
   const from = TABS.indexOf(tab);
   const to = TABS.indexOf(next);
   tab = next;
   document.documentElement.dataset.tab = next;
-  $("pill").style.transform = `translateX(${to * 100}%)`;
+  placePill();
   for (const b of document.querySelectorAll(".tab")) b.classList.toggle("is-on", b.dataset.tab === next);
   for (const p of document.querySelectorAll("[data-pane]")) {
     const on = p.dataset.pane === next;
@@ -69,6 +73,17 @@ function setTab(next) {
   $("settings").scrollTop = 0;
 }
 for (const b of document.querySelectorAll(".tab")) b.onclick = () => setTab(b.dataset.tab);
+
+// The tabs are as wide as their words, so the pill takes the width of the one it sits under.
+function placePill() {
+  const b = document.querySelector(`.tab[data-tab="${tab}"]`);
+  if (!b) return;
+  $("pill").style.setProperty("--pill-w", `${b.offsetWidth}px`);
+  $("pill").style.transform = `translateX(${b.offsetLeft}px)`;
+}
+// A language, a theme's font or the window's width moves the tabs; the pill follows.
+const tabWatch = new ResizeObserver(placePill);
+for (const b of document.querySelectorAll(".tab")) tabWatch.observe(b);
 setTab(new URLSearchParams(location.search).get("tab") ?? "voice");
 
 // The range track paints its filled part from --fill.
@@ -100,6 +115,35 @@ function paint() {
 }
 
 const lines = (el) => el.value.split("\n").map((s) => s.trim()).filter(Boolean);
+
+// ── where the sound goes ──────────────────────────────────────────────────────
+// Devices are kept by name: the helper windows see other ids for the same one.
+
+async function devices() {
+  const all = (await navigator.mediaDevices.enumerateDevices().catch(() => [])).filter((d) => d.kind === "audiooutput");
+  const names = [...new Set(all.map((d) => d.label).filter((l) => l && !/^(default|communications)/i.test(l)))];
+  for (const key of ["streamDevice", "monitorDevice"]) {
+    const sel = $(key);
+    sel.innerHTML = "";
+    const def = new Option(tr("deviceDefault"), "");
+    sel.append(def, ...names.map((n) => new Option(n, n)));
+    if (cfg[key] && !names.includes(cfg[key])) sel.append(new Option(cfg[key], cfg[key]));
+    sel.value = cfg[key] || "";
+    sel.onchange = () => {
+      cfg[key] = sel.value;
+      if (key === "streamDevice") route();
+      touched();
+    };
+  }
+  route();
+}
+
+async function route() {
+  const all = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  const id = all.find((d) => d.kind === "audiooutput" && d.label === cfg.streamDevice)?.deviceId ?? "";
+  audio.setSinkId?.(id).catch(() => {});
+}
+navigator.mediaDevices?.addEventListener?.("devicechange", () => cfg && devices());
 
 function collect() {
   cfg.username = $("channel").value.trim();
@@ -134,6 +178,8 @@ function relabel() {
   for (const el of flow.querySelectorAll(".line")) label(el);
   document.documentElement.lang = cfg.lang;
   relabelMusic();
+  relabelPet();
+  relabelBanks();
   relabelUpdates();
   // In the fog rail a tab is only its icon: the label goes to the tooltip.
   for (const b of document.querySelectorAll(".tab")) b.title = b.textContent.trim();
@@ -161,6 +207,8 @@ let playing = false;
 // Edge voices send mp3, our gateway voices WAV (base64 of "RIFF" starts "UklGR").
 const dataUrl = (b64) => `data:audio/${b64.startsWith("UklGR") ? "wav" : "mpeg"};base64,${b64}`;
 const audio = new Audio();
+let voiceWindow = false;
+window.mgi.on("voice:window", (on) => (voiceWindow = Boolean(on)));
 
 function label(el) {
   const { nick, reason, arg } = el.dataset;
@@ -208,6 +256,9 @@ function playNext() {
 
   playing = true;
   duck(true);
+  audio.volume = Math.min(1, cfg.voiceVolume / 100);
+  // The «Озвучка» window plays the same line to the stream; this copy only keeps time.
+  audio.muted = voiceWindow;
   audio.src = dataUrl(item.audio);
   audio.ontimeupdate = () => {
     if (audio.duration) el.style.setProperty("--fill", (audio.currentTime / audio.duration) * 100 + "%");
@@ -215,6 +266,22 @@ function playNext() {
   audio.onended = audio.onerror = finish;
   audio.play().catch(finish);
 }
+
+// ── action sounds ─────────────────────────────────────────────────────────────
+// A bank's «звук» plays from this window: the «Приложение» output in TikTok
+// LIVE Studio, free since the chat voice moved to its own window.
+
+const fxAudio = new Audio();
+window.mgi.on("fx:sound", async (m) => {
+  fxAudio.pause();
+  if (!m) return;
+  const all = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  const id = all.find((d) => d.kind === "audiooutput" && d.label === cfg.streamDevice)?.deviceId ?? "";
+  await fxAudio.setSinkId?.(id).catch(() => {});
+  fxAudio.src = m.url;
+  fxAudio.volume = Math.min(1, (m.volume ?? 80) / 100);
+  fxAudio.play().catch(() => {});
+});
 
 // ── air switch ────────────────────────────────────────────────────────────────
 
@@ -387,6 +454,9 @@ async function loadVoices() {
   picker = mountThemePicker($("themePick"), { lang: () => cfg.lang });
   themeBtn = mountThemeButton($("theme-btn"), { lang: () => cfg.lang });
   await initMusic({ cfg, touched });
+  initPet({ cfg, touched });
+  await initBanks({ cfg, touched });
+  devices();
   initUpdates();
   relabel();
   setAir(false);

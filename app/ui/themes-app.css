@@ -55,3 +55,14 @@
 
 /* The theme section in the OBS tab. */
 #themePick { margin-top: 2px; }
+
+/* The banks tab: flat accents, the kill switch in the theme's alarm colour. */
+:root[data-theme]:not([data-theme="studio"]) .rules { background: var(--glass); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); backdrop-filter: var(--blur); }
+:root[data-theme]:not([data-theme="studio"]) .kill { background: var(--bad); box-shadow: none; border-radius: var(--r-btn); }
+:root[data-theme]:not([data-theme="studio"]) :is(.chip.sel, .bk.is-active .bk__tag, .st__n) { background: var(--c1); color: var(--on-acc); box-shadow: none; }
+:root[data-theme]:not([data-theme="studio"]) .bk.is-active .vessel { filter: none; }
+:root[data-theme]:not([data-theme="studio"]) :is(select.tok option, .chip--sel option) { background: var(--glass-hi); }
+:root[data-theme="silence"] .vessel__rim { stroke: var(--line-hi); }
+/* The side menus stack tabs in a column: they keep their own height. */
+:root[data-theme="silence"] .tab, :root[data-theme="fog"] .tab { flex: none; }
+:root[data-theme]:not([data-theme="studio"]) :is(.chip, .keycap) { border-radius: var(--r-btn); }

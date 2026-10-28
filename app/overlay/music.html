@@ -25,6 +25,11 @@
     padding: 28px; gap: 14px;
     text-shadow: 0 2px 10px rgba(0, 0, 0, .85);
   }
+  /* Opened as the window for TikTok LIVE Studio (?win=1): a background to key
+     out or keep, and the whole page drags the frameless window. */
+  body.win { -webkit-app-region: drag; }
+  body.bg-green { background: #00ff00; text-shadow: none; }
+  body.bg-dark { background: #0b0a09; }
   .mono { font: 600 12px/1.2 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; }
 
   /* ── notes: who ordered what, stacked above the player ── */
@@ -85,9 +90,10 @@
   @keyframes ask { 50% { background: var(--c3); box-shadow: 0 0 26px var(--c3); } }
   @keyframes ask-title { 50% { color: var(--c3); } }
 
-  #next { margin-top: 2px; color: var(--dim); display: none; }
+  /* What plays next: read from across the room, so as large as the title's channel line. */
+  #next { margin-top: 6px; color: var(--c3); display: none; font-size: 13px; }
   #next.on { display: block; }
-  #next span { color: var(--ink); text-transform: none; letter-spacing: 0; font-family: 'Manrope', sans-serif; font-size: 13px; }
+  #next span { color: var(--ink); text-transform: none; letter-spacing: 0; font-family: 'Manrope', sans-serif; font-size: 17px; }
 </style>
 </head>
 <body>
@@ -110,9 +116,14 @@
 </div>
 
 <script>
+  {
+    const q = new URLSearchParams(location.search);
+    if (q.has("win")) document.body.classList.add("win");
+    if (q.get("bg") === "green" || q.get("bg") === "dark") document.body.classList.add("bg-" + q.get("bg"));
+  }
 const T = {
   ru: {
-    ordered: "заказ", next: "дальше", skip: "скип",
+    ordered: "заказ", next: "следующий", skip: "скип",
     queued: "в очереди", pending: "ждёт одобрения стримера",
     reason: {
       empty: "после команды нужно название трека", noSub: "заказ музыки сейчас выключен",
@@ -205,10 +216,15 @@ function note({ nick, title, ok, reason, arg }) {
   setTimeout(() => el.remove(), 7000);
 }
 
+// Opened by the app as its music window, this page also plays the track to the stream.
+let sound = null;
+if (new URLSearchParams(location.search).has("sound")) import("/channel.js").then((c) => (sound = c.channel({ role: "studio" })));
+
 function connect() {
   const ws = new WebSocket("ws://" + location.host);
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
+    sound?.(m);
     if (m.kind === "hello" && T[m.lang]) t = T[m.lang];
     else if (m.kind === "music-play") show(m.track, m.src);
     else if (m.kind === "music-stop") hide();

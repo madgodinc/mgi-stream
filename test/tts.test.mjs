@@ -49,7 +49,7 @@ test("a dead voice hands its phrases to the fallback and is benched", async () =
       return Buffer.from(text);
     },
   });
-  assert.equal(fallbackFor("ru-RU-DmitryNeural"), "en-US-AndrewMultilingualNeural");
+  assert.equal(fallbackFor("ru-RU-DmitryNeural"), "sub:aidar");
   for (let i = 0; i < 4; i++) assert.equal(String(await s.synth("p" + i)), "p" + i);
   // Two phrases pay for two tries each on the dead voice, then it is skipped.
   assert.deepEqual(asked.filter((v) => v === "ru-RU-DmitryNeural").length, 4);
