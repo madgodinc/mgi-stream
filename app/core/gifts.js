@@ -30,17 +30,24 @@ export function likes(ev) {
   return Number(ev?.count ?? ev?.likeCount ?? 1) || 1;
 }
 
+/**
+ * One gift event in either shape. Protocol v3 (what tiktok-live-connector 2.x
+ * hands over) keeps the name, price and type in `gift`; only the connector's
+ * legacy mode fills `giftDetails`. Reading just `giftDetails` made every real
+ * gift nameless and worth 1 coin.
+ */
 export function parseGift(ev) {
   const d = ev?.giftDetails ?? {};
-  const streakable = Number(d.giftType ?? ev?.giftType) === 1;
+  const g = ev?.gift ?? {};
+  const streakable = Number(d.giftType ?? g.type ?? ev?.giftType) === 1;
   const count = Number(ev?.repeatCount ?? 1) || 1;
   const end = !streakable || Boolean(ev?.repeatEnd);
   const msgId = String(ev?.common?.msgId ?? ev?.msgId ?? "");
   return {
     ...viewer(ev?.user),
-    giftId: ev?.giftId,
-    name: d.giftName ?? ev?.giftName ?? "",
-    diamonds: Number(d.diamondCount ?? ev?.diamondCount ?? 1) || 1,
+    giftId: Number(ev?.giftId ?? g.id) || ev?.giftId,
+    name: d.giftName || g.name || ev?.giftName || "",
+    diamonds: Number(d.diamondCount ?? g.diamondCount ?? ev?.diamondCount ?? 1) || 1,
     count,
     streakable,
     end,

@@ -199,3 +199,22 @@ test("a like event counts every tap in it, in both protocol shapes", async () =>
   assert.equal(likes({ likeCount: 7 }), 7);
   assert.equal(likes({}), 1);
 });
+
+test("a gift in the v3 shape keeps its name, price and streak type", () => {
+  const ev = {
+    user: { nickname: "Саша", displayId: "sasha", id: "7009" },
+    giftId: "5655",
+    repeatCount: 3,
+    repeatEnd: 0,
+    gift: { id: "5655", name: "Rose", diamondCount: 1, type: 1 },
+    common: { msgId: "m1" },
+  };
+  const g = parseGift(ev);
+  assert.equal(g.name, "Rose");
+  assert.equal(g.giftId, 5655);
+  assert.equal(g.streakable, true);
+  assert.equal(g.end, false);
+  const galaxy = parseGift({ user: {}, giftId: "11046", repeatCount: 1, repeatEnd: 1, gift: { name: "Galaxy", diamondCount: 1000, type: 2 } });
+  assert.equal(galaxy.diamonds, 1000);
+  assert.equal(galaxy.streakable, false);
+});
