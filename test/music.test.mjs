@@ -31,7 +31,25 @@ function fakeServer({ resolve = {} } = {}) {
 }
 
 const workDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "mgi-music-test-"));
-const settle = () => new Promise((r) => setTimeout(r, 30));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Waits for the queue to come to rest: nothing downloading and the state the
+ * same for 40 ms. A fixed pause was enough on this machine and too short on
+ * the CI runner, whose disk is slower.
+ */
+async function settle(m) {
+  if (!m) return sleep(30);
+  const until = Date.now() + 3000;
+  let last = "";
+  let same = 0;
+  while (Date.now() < until) {
+    const now = JSON.stringify([m.snapshot(), Boolean(m.loading), Boolean(m.wishNext)]);
+    same = now === last && !m.loading ? same + 1 : 0;
+    if (same >= 4) return;
+    last = now;
+    await sleep(10);
+  }
+}
 
 test("a command is the word, then a space; anything else is chat", () => {
   assert.equal(commandArg("/music Linkin Park Numb", "/music"), "Linkin Park Numb");
@@ -68,7 +86,7 @@ test("a request is resolved, downloaded with the tiktok product header, and play
   m.on("play", ({ track }) => played.push(track));
 
   assert.equal(m.onChat("kate", "/music numb", {}), "music");
-  await settle();
+  await settle(m);
   assert.equal(played.length, 1);
   assert.equal(played[0].title, "Song numb");
   assert.ok(fs.existsSync(m.current.file), "the file is on disk while it plays");
@@ -77,7 +95,7 @@ test("a request is resolved, downloaded with the tiktok product header, and play
 
   const file = m.current.file;
   m.finished(m.current.uid);
-  await settle();
+  await settle(m);
   assert.equal(fs.existsSync(file), false, "played means deleted");
   m.setLive(false);
 });
@@ -87,7 +105,7 @@ test("a YouTube link goes as a link, not as a search", async () => {
   const m = new Music({ account: okAccount, workDir: workDir(), fetchImpl: srv.fetchImpl });
   m.setLive(true);
   m.onChat("kate", "/music youtu.be/dQw4w9WgXcQ please", {});
-  await settle();
+  await settle(m);
   assert.equal(srv.calls[0].body.url, "https://youtu.be/dQw4w9WgXcQ");
   m.setLive(false);
 });
@@ -99,7 +117,7 @@ test("no subscription: the request is turned down before the server is asked", a
   const notes = [];
   m.on("request", (n) => notes.push(n));
   m.onChat("kate", "/music numb", {});
-  await settle();
+  await settle(m);
   assert.equal(srv.calls.length, 0);
   assert.equal(notes[0].reason, "noSub");
   m.setLive(false);
@@ -112,7 +130,7 @@ test("the server's rules reason reaches the viewer", async () => {
   const notes = [];
   m.on("request", (n) => notes.push(n));
   m.onChat("kate", "/music x", {});
-  await settle();
+  await settle(m);
   assert.deepEqual([notes[0].ok, notes[0].reason, notes[0].arg], [false, "rules", "Видео 18+"]);
   assert.equal(m.queue.length, 0);
   m.setLive(false);
@@ -124,15 +142,15 @@ test("approval holds a request until the streamer says yes; moderators skip the 
   m.configure({ approve: true });
   m.setLive(true);
   m.onChat("kate", "/music one", {});
-  await settle();
+  await settle(m);
   assert.equal(m.pending.length, 1);
   assert.equal(m.current, null);
   m.approve(m.pending[0].uid);
-  await settle();
+  await settle(m);
   assert.equal(m.current?.title, "Song one");
 
   m.onChat("mod", "/music two", { isModeratorOfAnchor: true });
-  await settle();
+  await settle(m);
   assert.equal(m.pending.length, 0);
   assert.equal(m.queue.length, 1);
   m.setLive(false);
@@ -144,18 +162,18 @@ test("viewer votes skip; a moderator skips at once", async () => {
   m.configure({ skipVotes: 2, perViewer: 5 });
   m.setLive(true);
   m.onChat("a", "/music one", {});
-  await settle();
+  await settle(m);
   m.onChat("a", "/music two", {});
-  await settle();
+  await settle(m);
   assert.equal(m.current.title, "Song one");
   assert.equal(m.onChat("x", "/skip", {}), "musicSkip");
   m.onChat("X", "/skip", {});
   assert.equal(m.current?.title, "Song one", "the same viewer twice is one vote");
   m.onChat("y", "/skip", {});
-  await settle();
+  await settle(m);
   assert.equal(m.current?.title, "Song two");
   m.onChat("mod", "/skip", { isAnchor: true });
-  await settle();
+  await settle(m);
   assert.equal(m.current, null);
   m.setLive(false);
 });
@@ -167,7 +185,7 @@ test("a ban drops the entry and stays in the lists", async () => {
   m.setLive(true);
   m.onChat("kate", "/music one", {});
   m.onChat("bob", "/music two", {});
-  await settle();
+  await settle(m);
   const two = m.queue.find((t) => t.nick === "bob");
   const lists = m.ban(two.uid, "user");
   assert.deepEqual(lists.bannedUsers, ["bob"]);
@@ -182,12 +200,12 @@ test("off air every file goes and requests are ignored", async () => {
   const m = new Music({ account: okAccount, workDir: dir, fetchImpl: srv.fetchImpl });
   m.setLive(true);
   m.onChat("kate", "/music one", {});
-  await settle();
+  await settle(m);
   m.setLive(false);
-  await settle();
+  await settle(m);
   assert.deepEqual(fs.readdirSync(dir), []);
   m.onChat("kate", "/music two", {});
-  await settle();
+  await settle(m);
   assert.equal(m.queue.length, 0);
 });
 
@@ -201,7 +219,7 @@ test("the local server: commands are not read out, files come with Range, the ov
   s.on("message", (x) => said.push(x));
 
   s.onChat("kate", "/music numb", {});
-  await settle();
+  await settle(m);
   assert.equal(said[0].spoken, false);
   assert.equal(said[0].reason, "music");
   assert.equal(s.queue.length, 0, "the speech queue never saw it");
@@ -227,23 +245,23 @@ test("with a state file the queue outlives off air and a restart, at the same se
   m.setLive(true);
   m.onChat("kate", "/music one", {});
   m.onChat("bob", "/music two", {});
-  await settle();
+  await settle(m);
   assert.ok(m.current);
   m.progress(m.current.uid, 42, false);
   const first = m.current.id;
   m.setLive(false);
-  await settle();
+  await settle(m);
   assert.equal(m.current, null);
   assert.ok(fs.readdirSync(dir).length >= 1);
 
   // A new process: the folder is swept, the saved files stay.
   const again = new Music({ account: okAccount, workDir: dir, fetchImpl: srv.fetchImpl, stateFile });
   again.sweep();
-  await settle();
+  await settle(again);
   let played = null;
   again.on("play", ({ track }) => (played = track));
   again.setLive(true);
-  await settle();
+  await settle(again);
   assert.equal(played.id, first);
   assert.equal(played.start, 42);
   assert.equal(again.queue.length + (again.current ? 1 : 0), 2);
@@ -263,7 +281,7 @@ test("the wishlist plays while nobody orders; a request goes after the track pla
   ];
 
   assert.equal(m.playWishlist(() => wishes, "вишлист"), true);
-  await settle();
+  await settle(m);
   assert.deepEqual(played, ["A"]);
   assert.equal(m.snapshot().wishlist, true);
   assert.equal(m.snapshot().current.wish, true);
@@ -271,16 +289,16 @@ test("the wishlist plays while nobody orders; a request goes after the track pla
   assert.equal(fetchA.body.max_duration, undefined, "own tracks are not held to the viewers' limit");
 
   m.onChat("kate", "/music numb", {});
-  await settle();
+  await settle(m);
   assert.deepEqual(played, ["A"], "a request waits for the track playing");
   m.finished(m.current.uid);
-  await settle();
+  await settle(m);
   assert.deepEqual(played, ["A", "Song numb"]);
   m.finished(m.current.uid);
-  await settle();
+  await settle(m);
   assert.deepEqual(played, ["A", "Song numb", "B"], "the wishlist goes on where it was");
   m.finished(m.current.uid);
-  await settle();
+  await settle(m);
   assert.deepEqual(played, ["A", "Song numb", "B", "A"], "round and round");
   m.setLive(false);
 });
@@ -295,13 +313,13 @@ test("a wishlist track starts at once over another wishlist track, and stop ends
   const wishes = ["A", "B", "C"].map((t) => ({ id: "wish" + t.repeat(7), title: t }));
 
   m.playWishlist(() => wishes, "вишлист");
-  await settle();
+  await settle(m);
   m.playWishlist(() => wishes, "вишлист", "wishCCCCCCC");
-  await settle();
+  await settle(m);
   assert.deepEqual(played, ["A", "C"]);
 
   m.stopWishlist();
-  await settle();
+  await settle(m);
   assert.equal(m.current, null);
   assert.equal(m.snapshot().wishlist, false);
   assert.equal(m.wishNext, null);
