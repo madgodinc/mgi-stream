@@ -87,9 +87,10 @@ const OFFLINE = /offline|isn'?t\s+online|not\s+online|not\s+live|has\s+ended/i;
  */
 export class StreamServer extends EventEmitter {
   /** `fontDir` lets the overlays use the window's fonts; `music`, `pet` and `banks` are optional. */
-  constructor(overlayDir, { fontDir = null, music = null, pet = null, banks = null, version = "" } = {}) {
+  constructor(overlayDir, { fontDir = null, music = null, pet = null, banks = null, version = "", matcher = null } = {}) {
     super();
     this.version = version;
+    this.matcher = matcher;
     this.gamesClients = new Set();
     // Chat words MGI Games treats as commands: never read out, whatever the prefix setting.
     this.gameCommands = [];
@@ -372,16 +373,29 @@ export class StreamServer extends EventEmitter {
       }
     });
     ws.on("error", () => {});
-    ws.on("message", (raw) => this.gamesMessage(raw));
+    ws.on("message", (raw) => this.gamesMessage(raw, ws));
     ws.send(JSON.stringify({ kind: "hello", app: "mgi-stream", version: this.version, username: this.cfg.username, live: this.onAir }));
   }
 
   /** One message from MGI Games, raw from the socket; what does not parse is ignored. */
-  gamesMessage(raw) {
+  gamesMessage(raw, ws = null) {
     const m = readGamesMessage(raw);
+    if (m?.kind === "match") return this.#match(m, ws);
     if (m?.kind === "say") this.pet?.say(m.nick ? `${m.nick}: ${m.text}` : m.text);
     else if (m?.kind === "hints") this.pet?.hints(m.lines);
     else if (m?.kind === "commands") this.gameCommands = m.prefixes;
+  }
+
+  /** Asks the match service (opts.matcher, it holds the account) and answers the asking client only. */
+  async #match({ rid, game, text }, ws) {
+    let answer;
+    try {
+      if (!this.matcher) throw new Error("noMatcher");
+      answer = { ok: true, ...(await this.matcher(game, text)) };
+    } catch (err) {
+      answer = { ok: false, error: String(err?.message ?? err) };
+    }
+    if (ws?.readyState === 1) ws.send(JSON.stringify({ kind: "matched", rid, ...answer }));
   }
 
   #games(msg) {

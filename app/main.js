@@ -62,7 +62,22 @@ const pet = new Pet();
 // The jars outlive the app like the music queue does: a restart mid-stream keeps every coin.
 const banks = new Banks({ stateFile: path.join(configDir, "banks-state.json") });
 banks.configure(config.load(configDir).banks);
-const server = new StreamServer(path.join(here, "overlay"), { fontDir: path.join(here, "ui", "fonts"), music, pet, banks, version: app.getVersion() });
+// MGI Games asks what a viewer meant ("!позови малению"); the match service
+// on our server (VON) answers for accounts with a live subscription.
+const MATCH_URL = "https://madgodinc.net/games/api/match";
+async function matcher(game, text) {
+  if (!account.status().ok || !account.token) throw new Error("noAccount");
+  const res = await fetch(MATCH_URL, {
+    method: "POST",
+    headers: { authorization: `Bearer ${account.token}`, "content-type": "application/json" },
+    body: JSON.stringify({ game, text }),
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!res.ok) throw new Error(`http${res.status}`);
+  const data = await res.json();
+  return { ref: String(data.ref ?? ""), name: String(data.name ?? ""), confidence: Number(data.confidence) || 0 };
+}
+const server = new StreamServer(path.join(here, "overlay"), { fontDir: path.join(here, "ui", "fonts"), music, pet, banks, version: app.getVersion(), matcher });
 
 // ── actions: what a full bank or a gift rule does on the streamer's PC ────────
 // Keys go through SendInput (core/input.js); darkness and pictures through a

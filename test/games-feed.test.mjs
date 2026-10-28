@@ -218,3 +218,20 @@ test("a gift in the v3 shape keeps its name, price and streak type", () => {
   assert.equal(galaxy.diamonds, 1000);
   assert.equal(galaxy.streakable, false);
 });
+
+test("a match request is checked and answered to the asking client only", async () => {
+  assert.equal(readGamesMessage(JSON.stringify({ kind: "match", rid: 1, game: "Elden Ring", text: "x" })), null);
+  assert.equal(readGamesMessage(JSON.stringify({ kind: "match", rid: -1, game: "eldenring", text: "x" })), null);
+  assert.deepEqual(readGamesMessage(JSON.stringify({ kind: "match", rid: 7, game: "eldenring", text: " позови малению " })), {
+    kind: "match", rid: 7, game: "eldenring", text: "позови малению",
+  });
+  const s = await started({ pet: fakePet(), matcher: async (game, text) => ({ ref: "effect:malenia", name: `${game}:${text}`, confidence: 0.9 }) });
+  const games = await client("/games");
+  await settle();
+  games.ws.send(JSON.stringify({ kind: "match", rid: 7, game: "eldenring", text: "позови малению" }));
+  await settle(120);
+  const answer = games.got.find((m) => m.kind === "matched");
+  assert.deepEqual(answer, { kind: "matched", rid: 7, ok: true, ref: "effect:malenia", name: "eldenring:позови малению", confidence: 0.9 });
+  games.ws.close();
+  await s.stop();
+});

@@ -49,6 +49,15 @@ export function readGamesMessage(raw) {
     if (!lines) return null;
     return { kind: "hints", lines: lines.map((l) => clean(l, TEXT_MAX)).filter(Boolean) };
   }
+  if (m.kind === "match") {
+    // "What did the viewer mean?": MGI Games has no account of its own, so
+    // this app asks the match service with its token and passes the answer back.
+    const rid = Number(m.rid);
+    const game = typeof m.game === "string" ? m.game : "";
+    if (!Number.isInteger(rid) || rid < 0 || !/^[a-z0-9_]{1,32}$/.test(game) || typeof m.text !== "string") return null;
+    const text = clean(m.text, 120).replace(/\s+/g, " ");
+    return text ? { kind: "match", rid, game, text } : null;
+  }
   if (m.kind === "commands") {
     const list = strings(m.prefixes, PREFIXES_MAX);
     if (!list) return null;
